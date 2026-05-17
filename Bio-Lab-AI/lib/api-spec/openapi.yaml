@@ -1,0 +1,655 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Lab Copilot API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: experiments
+    description: Lab experiment management
+  - name: gemini
+    description: Gemini AI chat and image operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /experiments:
+    get:
+      operationId: listExperiments
+      tags: [experiments]
+      summary: List all experiments
+      parameters:
+        - name: assay_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of experiments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExperimentSummary"
+    post:
+      operationId: createExperiment
+      tags: [experiments]
+      summary: Create a new experiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExperimentBody"
+      responses:
+        "201":
+          description: Created experiment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experiment"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /experiments/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [experiments]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /experiments/{id}:
+    get:
+      operationId: getExperiment
+      tags: [experiments]
+      summary: Get experiment details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Experiment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experiment"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: updateExperiment
+      tags: [experiments]
+      summary: Update experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExperimentBody"
+      responses:
+        "200":
+          description: Updated experiment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experiment"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteExperiment
+      tags: [experiments]
+      summary: Delete experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /experiments/{id}/data-analysis:
+    post:
+      operationId: generateDataAnalysisReport
+      tags: [experiments]
+      summary: Generate a full structured data analysis report (SSE stream)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SSE stream of markdown report chunks
+          content:
+            text/event-stream: {}
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /experiments/{id}/analyze:
+    post:
+      operationId: analyzeExperiment
+      tags: [experiments]
+      summary: Generate AI analysis and suggestions for an experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeExperimentBody"
+      responses:
+        "200":
+          description: AI analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperimentAnalysis"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /gemini/conversations:
+    get:
+      operationId: listGeminiConversations
+      tags: [gemini]
+      summary: List all conversations
+      parameters:
+        - name: experiment_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeminiConversation"
+    post:
+      operationId: createGeminiConversation
+      tags: [gemini]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGeminiConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiConversation"
+  /gemini/conversations/{id}:
+    get:
+      operationId: getGeminiConversation
+      tags: [gemini]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
+    delete:
+      operationId: deleteGeminiConversation
+      tags: [gemini]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
+  /gemini/conversations/{id}/messages:
+    get:
+      operationId: listGeminiMessages
+      tags: [gemini]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeminiMessage"
+    post:
+      operationId: sendGeminiMessage
+      tags: [gemini]
+      summary: Send a message and receive an AI response (SSE stream)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendGeminiMessageBody"
+      responses:
+        "200":
+          description: SSE stream of assistant response chunks
+          content:
+            text/event-stream: {}
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    ExperimentSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        date:
+          type: string
+        assay_type:
+          type: string
+        instrument:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, unknown, in_progress]
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - date
+        - assay_type
+        - instrument
+        - status
+        - created_at
+
+    Experiment:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        date:
+          type: string
+        assay_type:
+          type: string
+        instrument:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [success, failed, unknown, in_progress]
+        file_name:
+          type: string
+          nullable: true
+        raw_data_json:
+          type: string
+          nullable: true
+        ai_summary:
+          type: string
+          nullable: true
+        ai_next_experiments_json:
+          type: string
+          nullable: true
+        conversation_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - date
+        - assay_type
+        - instrument
+        - status
+        - created_at
+        - updated_at
+
+    CreateExperimentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        date:
+          type: string
+        assay_type:
+          type: string
+        instrument:
+          type: string
+          default: "Generic"
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, unknown, in_progress]
+          default: "unknown"
+        file_name:
+          type: string
+        file_content_b64:
+          type: string
+          description: Base64-encoded CSV/Excel file content
+      required:
+        - name
+        - date
+        - assay_type
+
+    UpdateExperimentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        date:
+          type: string
+        assay_type:
+          type: string
+        instrument:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, unknown, in_progress]
+
+    AnalyzeExperimentBody:
+      type: object
+      properties:
+        focus_question:
+          type: string
+          description: Optional specific question to focus the analysis on
+
+    ExperimentAnalysis:
+      type: object
+      properties:
+        ai_summary:
+          type: string
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/NextExperimentSuggestion"
+        conversation_id:
+          type: integer
+      required:
+        - ai_summary
+        - suggestions
+        - conversation_id
+
+    NextExperimentSuggestion:
+      type: object
+      properties:
+        title:
+          type: string
+        variable_to_change:
+          type: string
+        rationale:
+          type: string
+        expected_outcome:
+          type: string
+        confidence:
+          type: string
+          enum: [low, medium, high]
+      required:
+        - title
+        - variable_to_change
+        - rationale
+        - expected_outcome
+        - confidence
+
+    DashboardStats:
+      type: object
+      properties:
+        total_experiments:
+          type: integer
+        by_status:
+          type: object
+          additionalProperties:
+            type: integer
+        recent_experiments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExperimentSummary"
+        experiments_by_date:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              count:
+                type: integer
+            required:
+              - date
+              - count
+        assay_type_breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              assay_type:
+                type: string
+              count:
+                type: integer
+            required:
+              - assay_type
+              - count
+      required:
+        - total_experiments
+        - by_status
+        - recent_experiments
+        - experiments_by_date
+        - assay_type_breakdown
+
+    GeminiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        experimentId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+    GeminiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    CreateGeminiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+        experimentId:
+          type: integer
+          nullable: true
+      required:
+        - title
+    SendGeminiMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    GeminiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        experimentId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeminiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+    GeminiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

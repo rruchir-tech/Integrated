@@ -1,0 +1,252 @@
+Build a full-stack biotech AI lab copilot web app focused on **Synergy H1 + Gen5** plate-reader data.
+
+GOAL:
+Create a real, runnable app in Replit that lets a scientist:
+1) upload Synergy H1 / Gen5 plate data (CSV/Excel),
+2) store experiments in SQLite,
+3) chat with an AI copilot about why an experiment behaved a certain way,
+4) see a simple dashboard, and
+5) get 3 suggested next experiments.
+
+This should NOT be a toy; it should feel like a small but real SaaS product.
+
+TECH STACK:
+- Frontend: React
+- Backend: Python Flask
+- Database: SQLite
+- AI: Google Gemini API (chat model), via Python
+- Environment variable for key: GEMINI_API_KEY (use Replit Secrets)
+
+HOSTING / REPLIT:
+- Everything should run inside a single Replit project.
+- Flask must listen on host 0.0.0.0.
+- Include a clear way to start frontend + backend (single command or simple instructions).
+- Use Replit Secrets for GEMINI_API_KEY (do NOT expose the key to frontend).
+
+HIGH-LEVEL PRODUCT:
+“Synergy Copilot” – an AI assistant for Synergy H1 users.
+
+Core idea:
+- Scientists export plate data from Synergy H1 via Gen5 (CSV/Excel).
+- They upload that file into the app, plus some metadata.
+- The app parses the plate data, computes basic metrics, saves everything.
+- The copilot then explains what happened, compares to past runs, and suggests next experiments.
+
+LAYOUT:
+Create a clean SaaS-style layout:
+
+- Left sidebar (dark):
+  - App logo/name: “Synergy Copilot”
+  - Button: “New Experiment”
+  - List of past experiments (name, date, status chip: success/failed/unknown)
+- Main area:
+  - Top: Experiment details + upload form + parsed summary
+  - Bottom-left: Chat copilot for the selected experiment
+  - Bottom-right: “Next Experiments” suggestions panel
+  - A “Dashboard” tab or section with simple charts
+
+Design:
+- Dark sidebar, light/neutral main content
+- Modern fonts, good spacing, card-based UI
+- Make it look like a real B2B SaaS product, not plain HTML
+
+STAGE 1 – BACKEND + DB (core experiment model)
+
+Create a Flask backend with:
+
+SQLite schema “experiments” containing at least:
+- id (int, PK)
+- name (text)
+- date (text or date)
+- assay_type (text, e.g., “viability”)
+- instrument (text, default “Synergy H1”)
+- raw_file_name (text, nullable)
+- raw_file_content (text or blob)
+- plate_summary_json (text: JSON with computed stats and plate info)
+- notes (text)
+- status (text: “success” / “failed” / “unknown”)
+- ai_summary (text)
+- ai_next_experiments_json (text: JSON)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+API endpoints:
+- GET /api/experiments → list experiments (id, name, date, status, assay_type)
+- GET /api/experiments/<id> → full details including plate_summary_json
+- POST /api/experiments → create new experiment with metadata + file
+- PUT /api/experiments/<id> → update fields like status, notes, etc.
+- Optional DELETE /api/experiments/<id>
+
+File handling:
+- Accept CSV and Excel (.csv, .xls, .xlsx).
+- For now, store raw file content (or path) and parse immediately into structured data.
+- Implement basic validation and return clear error messages on bad uploads.
+
+STAGE 2 – PLATE DATA PARSING FOR SYNERGY H1 / GEN5
+
+Assume a Gen5-style CSV with columns like:
+- Well (e.g., “A1”)
+- SampleID
+- Condition (e.g., “Control”, “DrugA”)
+- Dose_uM (float or 0 for control)
+- Signal (float)
+
+Implement a parser that:
+- Identifies control wells:
+  - Condition == “Control” OR Dose_uM == 0
+- Groups wells by dose:
+  - Group rows by Dose_uM for treated wells
+- Computes, for each dose group (+ control):
+  - n wells
+  - mean Signal
+  - standard deviation of Signal
+  - percent change vs control (if control exists)
+- Flags obvious outliers (e.g., wells > 2.5 SD from group mean)
+
+Store in plate_summary_json:
+- control_stats: {mean, sd, n}
+- per_dose_stats: list of
+  - dose_uM
+  - mean_signal
+  - sd_signal
+  - n
+  - percent_change_vs_control
+- outlier_wells: list of wells
+- any other useful metadata
+
+The app must handle:
+- Missing Condition or Dose_uM columns (fallback to basic summary).
+- Non-standard column names using a simple mapping or helpful error.
+
+STAGE 3 – FRONTEND: EXPERIMENT FORM + SIDEBAR
+
+Frontend with React:
+
+Components:
+- Sidebar:
+  - Shows list of experiments from /api/experiments
+  - Clicking an experiment loads it into main view
+  - “New Experiment” button resets main form
+
+- ExperimentForm:
+  - Fields: name, date, assay_type, notes, status (select), file upload
+  - On submit:
+    - POST /api/experiments with metadata + file
+    - On success, refresh sidebar and load new experiment
+
+- ExperimentDetails:
+  - Shows parsed Synergy H1 summary:
+    - control mean/sd
+    - each dose group (dose vs mean signal vs % change)
+  - Shows notes and instrument info
+
+- Handle loading states and errors (e.g., “Parsing failed: no ‘Signal’ column found”)
+
+STAGE 4 – COPILOT (AI CHAT)
+
+Add a chatbot panel tied to the **selected experiment**.
+
+Backend:
+- POST /api/chat:
+  - Input: experiment_id, user_message
+  - Backend fetches experiment by id
+  - Fetches 2–3 most recent related experiments (same assay_type and instrument)
+  - Builds a prompt for Gemini with:
+    - System instruction
+    - Current experiment summary (including Synergy H1 metrics)
+    - Short summaries of related experiments (if any)
+    - The user’s question
+
+SYSTEM PROMPT (server-side, not exposed to user):
+
+“You are an expert cell biologist and lab scientist copilot. You specialize in analyzing Synergy H1 / Gen5 plate-reader experiments. You help scientists diagnose failed or surprising experiments, identify patterns across multiple Synergy H1 runs, and suggest concrete next experiments. Always be specific, cite the numeric data you see (e.g., dose, mean signal, percent change vs control), compare with previous experiments if available, and give actionable recommendations. If the data is limited, state your uncertainty clearly and suggest what additional experiment would reduce uncertainty.”
+
+User asks questions like:
+- “Why is viability so low at 1 µM?”
+- “How does this plate compare to my last Synergy H1 run?”
+- “What doses should I test next if I want less toxicity?”
+
+The API returns the AI text, and:
+- Optionally a short summary and 3 structured suggestions.
+
+Frontend chat UI:
+- Chat window showing user and AI messages
+- Input box + Send button
+- Loading indicator when waiting for AI
+- Display the AI answer in a readable, structured way
+- Keep chat history for the current experiment in state
+
+If possible, implement **streaming** from Flask to React (SSE or chunked), but if that’s too complex, a standard single-response is OK for now.
+
+STAGE 5 – NEXT-EXPERIMENT SUGGESTIONS
+
+After a chat call, the backend should:
+
+- Extract or ask the model to output 3 suggested next experiments in a structured JSON-ish way, including:
+  - name/title
+  - variable_to_change (e.g., “dose from 0.1 to 0.25 µM”)
+  - rationale
+  - expected_outcome
+  - confidence (low/medium/high)
+
+- Save this JSON string into ai_next_experiments_json in the experiment row.
+
+Frontend:
+- “Next Experiments” panel:
+  - Reads ai_next_experiments_json
+  - Shows 3 cards with title, variable_to_change, rationale, confidence
+  - If no suggestions exist yet, show an empty state with “Ask the copilot for next experiments.”
+
+STAGE 6 – DASHBOARD
+
+Add a basic dashboard view for the lab:
+
+Backend:
+- GET /api/dashboard:
+  - return:
+    - total_experiments
+    - experiments_by_status (counts per success/failed/unknown)
+    - recent_experiments (name, date, status)
+    - simple time series: experiment_count_by_date
+    - optional: average control vs average treatment signals across all Synergy H1 experiments
+
+Frontend:
+- Dashboard component:
+  - Summary cards for counts
+  - Simple chart for experiment counts over time
+  - Bar chart or pie for success vs failed vs unknown
+  - Table/list of recent experiments
+
+Use a simple chart library that works easily with React (e.g., Recharts or Chart.js).
+
+ERROR HANDLING & UX:
+- If GEMINI_API_KEY is missing:
+  - Backend should respond with a clear error
+  - Frontend should display a banner like “AI features are disabled: missing GEMINI_API_KEY.”
+- If file parsing fails:
+  - Show an error in the experiment form area, with guidance (“We expected a Gen5-style CSV with columns Well, SampleID, Condition, Dose_uM, Signal”).
+- If the user tries to use chat with no experiment selected:
+  - Disable the chat input with a message like “Select an experiment to talk to the copilot.”
+
+SECURITY / SANITY:
+- Do not expose GEMINI_API_KEY in frontend.
+- Validate file types (only allow csv/xlsx/xls for now).
+- Sanitize filenames and handle large files with care.
+- Keep the code modular: separate routes, DB access, AI helper, and parsing logic.
+
+DOCUMENTATION:
+- Add a simple README or top-level comment with:
+  - How to run the app in Replit
+  - Where to set GEMINI_API_KEY (Replit Secrets)
+  - Example of a simple CSV format for Synergy H1/Gen5 exports
+
+BUILD ORDER:
+1) Implement backend + DB schema + experiment CRUD.
+2) Implement Synergy H1/Gen5 CSV parsing and plate_summary_json.
+3) Build React UI: sidebar, experiment form, experiment details.
+4) Add /api/chat and AI integration using GEMINI_API_KEY.
+5) Add Next Experiments panel.
+6) Add dashboard & charts.
+7) Do a quick UX polish pass.
+
+Please generate all needed files and code so I can run this directly in Replit with minimal manual wiring.

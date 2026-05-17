@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "FzURBekgNCHJqbmcbfZ8F"
+uri = "file://test_synergy_h1_export.xlsx"
+type = "table"
+title = "test_synergy_h1_export.xlsx — BioTek Gen5 Synergy H1 Test Export"
