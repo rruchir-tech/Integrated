@@ -55,6 +55,9 @@ Notes: Awaiting protein-level confirmation by Western blot. Results look promisi
   },
 ];
 
+// Seed data is demo-only and owned by a synthetic system user.
+const SEED_USER_ID = "system_seed";
+
 export async function seedIfEmpty(): Promise<void> {
   try {
     const count = await db
@@ -70,7 +73,7 @@ export async function seedIfEmpty(): Promise<void> {
     logger.info("No experiments found — seeding initial dataset");
 
     for (const exp of SEED_EXPERIMENTS) {
-      await db.insert(experiments).values(exp);
+      await db.insert(experiments).values({ ...exp, user_id: SEED_USER_ID });
     }
 
     logger.info({ count: SEED_EXPERIMENTS.length }, "Seed complete");

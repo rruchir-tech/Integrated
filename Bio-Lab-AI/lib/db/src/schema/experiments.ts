@@ -6,6 +6,7 @@ import { conversations } from "./conversations";
 
 export const experiments = pgTable("experiments", {
   id: serial("id").primaryKey(),
+  user_id: text("user_id").notNull(),
   name: text("name").notNull(),
   date: text("date").notNull(),
   assay_type: text("assay_type").notNull(),

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CommandPaletteTrigger } from "@/components/CommandPalette";
-import { useUser, useClerk } from "@clerk/react";
+import { useAppUser } from "@/contexts/UserContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,8 +18,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-const APPROVED_ADMIN_EMAIL = "dasu.srivanth@gmail.com";
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -30,14 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const resolvedTheme = theme ?? "dark";
   const [scrollProgress, setScrollProgress] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
-  const currentEmails = [
-    normalizeEmail(user?.primaryEmailAddress?.emailAddress ?? ""),
-    ...(user?.emailAddresses?.filter((e) => e.verification?.status === "verified").map((e) => normalizeEmail(e.emailAddress)) ?? []),
-    ...(user?.emailAddresses?.map((e) => normalizeEmail(e.emailAddress)) ?? []),
-  ];
-  const isAdmin = currentEmails.includes(APPROVED_ADMIN_EMAIL);
+  const { displayName, initials, email, isAdmin, isLoaded, signOut } = useAppUser();
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -45,9 +36,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (hour < 18) return "Good afternoon";
     return "Good evening";
   }, []);
-
-  const displayName = user?.firstName || user?.username || user?.emailAddresses?.[0]?.emailAddress?.split("@")[0] || "Researcher";
-  const initials = (user?.firstName?.[0] || "") + (user?.lastName?.[0] || "") || displayName[0]?.toUpperCase() || "R";
 
   useEffect(() => {
     const onScroll = () => {
@@ -95,7 +83,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{isLoaded ? displayName : greeting}</div>
                     <div className="text-xs text-sidebar-foreground/60 truncate">
-                      {user?.emailAddresses?.[0]?.emailAddress || ""}
+                      {email}
                     </div>
                   </div>
                   <Badge variant="outline" className="text-[10px] uppercase tracking-widest flex-shrink-0">Pro</Badge>
@@ -109,7 +97,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <DropdownMenuContent align="start" className="w-56">
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">{displayName}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.emailAddresses?.[0]?.emailAddress || ""}</p>
+                <p className="text-xs text-muted-foreground truncate">{email}</p>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="gap-2 cursor-pointer" disabled>
@@ -119,7 +107,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => signOut({ redirectUrl: "/" })}
+                onClick={() => signOut()}
               >
                 <LogOut className="h-4 w-4" />
                 Sign out

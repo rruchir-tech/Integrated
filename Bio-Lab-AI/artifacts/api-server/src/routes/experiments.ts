@@ -8,14 +8,16 @@ import {
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { getAuth } from "@clerk/express";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
 
 router.get("/experiments", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const query = ListExperimentsQueryParams.parse(req.query);
-    const conditions = [];
+    const conditions = [eq(experiments.user_id, userId)];
     if (query.assay_type) conditions.push(eq(experiments.assay_type, query.assay_type));
     if (query.status) conditions.push(eq(experiments.status, query.status));
     if (query.search) conditions.push(like(experiments.name, `%${query.search}%`));
@@ -31,7 +33,7 @@ router.get("/experiments", async (req, res) => {
         created_at: experiments.created_at,
       })
       .from(experiments)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(desc(experiments.created_at));
 
     res.json(rows);
@@ -41,13 +43,19 @@ router.get("/experiments", async (req, res) => {
   }
 });
 
-router.get("/experiments/dashboard", async (_req, res) => {
+router.get("/experiments/dashboard", async (req, res) => {
   try {
-    const total = await db.select({ count: sql<number>`count(*)` }).from(experiments);
+    const userId = getAuth(req).userId!;
+
+    const total = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(experiments)
+      .where(eq(experiments.user_id, userId));
 
     const byStatus = await db
       .select({ status: experiments.status, count: sql<number>`count(*)` })
       .from(experiments)
+      .where(eq(experiments.user_id, userId))
       .groupBy(experiments.status);
 
     const recent = await db
@@ -61,6 +69,7 @@ router.get("/experiments/dashboard", async (_req, res) => {
         created_at: experiments.created_at,
       })
       .from(experiments)
+      .where(eq(experiments.user_id, userId))
       .orderBy(desc(experiments.created_at))
       .limit(5);
 
@@ -70,6 +79,7 @@ router.get("/experiments/dashboard", async (_req, res) => {
         count: sql<number>`count(*)`,
       })
       .from(experiments)
+      .where(eq(experiments.user_id, userId))
       .groupBy(sql`date_trunc('day', created_at)`)
       .orderBy(sql`date_trunc('day', created_at)`)
       .limit(30);
@@ -77,6 +87,7 @@ router.get("/experiments/dashboard", async (_req, res) => {
     const byAssay = await db
       .select({ assay_type: experiments.assay_type, count: sql<number>`count(*)` })
       .from(experiments)
+      .where(eq(experiments.user_id, userId))
       .groupBy(experiments.assay_type);
 
     const statusMap: Record<string, number> = {};
@@ -96,8 +107,11 @@ router.get("/experiments/dashboard", async (_req, res) => {
 
 router.get("/experiments/:id", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const id = parseInt(req.params.id);
-    const rows = await db.select().from(experiments).where(eq(experiments.id, id)).limit(1);
+    const rows = await db.select().from(experiments)
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
+      .limit(1);
     if (!rows[0]) {
       return res.status(404).json({ error: "Experiment not found" });
     }
@@ -109,6 +123,7 @@ router.get("/experiments/:id", async (req, res) => {
 
 router.post("/experiments", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const body = CreateExperimentBody.parse(req.body);
 
     let rawDataJson: string | null = null;
@@ -119,6 +134,7 @@ router.post("/experiments", async (req, res) => {
     const inserted = await db
       .insert(experiments)
       .values({
+        user_id: userId,
         name: body.name,
         date: body.date,
         assay_type: body.assay_type,
@@ -139,13 +155,14 @@ router.post("/experiments", async (req, res) => {
 
 router.put("/experiments/:id", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const id = parseInt(req.params.id);
     const body = UpdateExperimentBody.parse(req.body);
 
     const updated = await db
       .update(experiments)
       .set({ ...body, updated_at: new Date() })
-      .where(eq(experiments.id, id))
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
       .returning();
 
     if (!updated[0]) {
@@ -159,8 +176,11 @@ router.put("/experiments/:id", async (req, res) => {
 
 router.delete("/experiments/:id", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const id = parseInt(req.params.id);
-    const deleted = await db.delete(experiments).where(eq(experiments.id, id)).returning();
+    const deleted = await db.delete(experiments)
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
+      .returning();
     if (!deleted[0]) {
       return res.status(404).json({ error: "Experiment not found" });
     }
@@ -172,15 +192,18 @@ router.delete("/experiments/:id", async (req, res) => {
 
 router.post("/experiments/:id/data-analysis", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const id = parseInt(req.params.id);
-    const rows = await db.select().from(experiments).where(eq(experiments.id, id)).limit(1);
+    const rows = await db.select().from(experiments)
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
+      .limit(1);
     if (!rows[0]) return res.status(404).json({ error: "Experiment not found" });
     const exp = rows[0];
 
     const related = await db
       .select()
       .from(experiments)
-      .where(and(eq(experiments.assay_type, exp.assay_type), sql`${experiments.id} != ${id}`))
+      .where(and(eq(experiments.assay_type, exp.assay_type), eq(experiments.user_id, userId), sql`${experiments.id} != ${id}`))
       .orderBy(desc(experiments.created_at))
       .limit(3);
 
@@ -365,62 +388,81 @@ router.post("/experiments/:id/recommendations/:index/edit", async (req, res) => 
 });
 
 router.get("/experiments/:id/comments", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const experimentId = parseInt(req.params.id);
-  const rows = await db.select().from(experimentComments).where(eq(experimentComments.experiment_id, experimentId)).orderBy(desc(experimentComments.created_at));
+  const rows = await db.select().from(experimentComments)
+    .where(and(eq(experimentComments.experiment_id, experimentId), eq(experimentComments.user_id, userId)))
+    .orderBy(desc(experimentComments.created_at));
   res.json(rows);
 });
 
 router.post("/experiments/:id/comments", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const experimentId = parseInt(req.params.id);
-  const row = await db.insert(experimentComments).values({ experiment_id: experimentId, ...req.body }).returning();
+  const row = await db.insert(experimentComments).values({ user_id: userId, experiment_id: experimentId, ...req.body }).returning();
   res.status(201).json(row[0]);
 });
 
 router.delete("/comments/:comment_id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.comment_id);
-  const row = await db.delete(experimentComments).where(eq(experimentComments.id, id)).returning();
+  const row = await db.delete(experimentComments)
+    .where(and(eq(experimentComments.id, id), eq(experimentComments.user_id, userId)))
+    .returning();
   if (!row[0]) return res.status(404).json({ error: "Comment not found" });
   return res.status(204).send();
 });
 
-router.get("/tasks", async (_req, res) => {
-  const rows = await db.select().from(tasks).orderBy(desc(tasks.created_at));
+router.get("/tasks", async (req, res) => {
+  const userId = getAuth(req).userId!;
+  const rows = await db.select().from(tasks).where(eq(tasks.user_id, userId)).orderBy(desc(tasks.created_at));
   return res.json(rows);
 });
 
 router.get("/experiments/:id/tasks", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const experimentId = parseInt(req.params.id);
-  const rows = await db.select().from(tasks).where(eq(tasks.experiment_id, experimentId)).orderBy(desc(tasks.created_at));
+  const rows = await db.select().from(tasks)
+    .where(and(eq(tasks.experiment_id, experimentId), eq(tasks.user_id, userId)))
+    .orderBy(desc(tasks.created_at));
   return res.json(rows);
 });
 
 router.post("/tasks", async (req, res) => {
-  const row = await db.insert(tasks).values(req.body).returning();
+  const userId = getAuth(req).userId!;
+  const row = await db.insert(tasks).values({ ...req.body, user_id: userId }).returning();
   return res.status(201).json(row[0]);
 });
 
 router.put("/tasks/:id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.id);
-  const row = await db.update(tasks).set({ ...req.body, updated_at: new Date() }).where(eq(tasks.id, id)).returning();
+  const row = await db.update(tasks).set({ ...req.body, updated_at: new Date() })
+    .where(and(eq(tasks.id, id), eq(tasks.user_id, userId)))
+    .returning();
   if (!row[0]) return res.status(404).json({ error: "Task not found" });
   return res.json(row[0]);
 });
 
 router.delete("/tasks/:id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.id);
-  const row = await db.delete(tasks).where(eq(tasks.id, id)).returning();
+  const row = await db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Task not found" });
   return res.status(204).send();
 });
 
 router.post("/experiments/:id/analyze", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const id = parseInt(req.params.id);
     const bodyParsed = req.body && Object.keys(req.body).length > 0
       ? AnalyzeExperimentBody.parse(req.body)
       : {};
 
-    const rows = await db.select().from(experiments).where(eq(experiments.id, id)).limit(1);
+    const rows = await db.select().from(experiments)
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
+      .limit(1);
     if (!rows[0]) return res.status(404).json({ error: "Experiment not found" });
     const exp = rows[0];
 
@@ -428,7 +470,7 @@ router.post("/experiments/:id/analyze", async (req, res) => {
     const related = await db
       .select()
       .from(experiments)
-      .where(and(eq(experiments.assay_type, exp.assay_type), sql`${experiments.id} != ${id}`))
+      .where(and(eq(experiments.assay_type, exp.assay_type), eq(experiments.user_id, userId), sql`${experiments.id} != ${id}`))
       .orderBy(desc(experiments.created_at))
       .limit(3);
 
@@ -539,6 +581,7 @@ Respond in this exact JSON format:
 
 router.post("/experiments/compare", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const { experiment_a_id, experiment_b_id, question } = req.body as {
       experiment_a_id: number;
       experiment_b_id: number;
@@ -550,8 +593,8 @@ router.post("/experiments/compare", async (req, res) => {
     }
 
     const [rowsA, rowsB] = await Promise.all([
-      db.select().from(experiments).where(eq(experiments.id, experiment_a_id)).limit(1),
-      db.select().from(experiments).where(eq(experiments.id, experiment_b_id)).limit(1),
+      db.select().from(experiments).where(and(eq(experiments.id, experiment_a_id), eq(experiments.user_id, userId))).limit(1),
+      db.select().from(experiments).where(and(eq(experiments.id, experiment_b_id), eq(experiments.user_id, userId))).limit(1),
     ]);
 
     if (!rowsA[0]) return res.status(404).json({ error: "Experiment A not found" });

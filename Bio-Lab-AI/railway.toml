@@ -1,0 +1,30 @@
+# Railway deployment configuration for Lab Copilot monorepo.
+#
+# This file configures the API service.
+# The frontend (Vite SPA) should be deployed separately to Vercel or Netlify,
+# OR you can add a second Railway service pointed at the same repo.
+#
+# Quick start:
+#   1. Push this repo to GitHub
+#   2. New Railway project → "Deploy from GitHub repo"
+#   3. Add a PostgreSQL plugin — Railway auto-sets DATABASE_URL
+#   4. Add env vars from .env.example (GEMINI_API_KEY, CLERK_SECRET_KEY, etc.)
+#   5. Railway will run the build + start commands below
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install -g pnpm@9 && pnpm install --frozen-lockfile && pnpm run build"
+
+[deploy]
+startCommand = "node artifacts/api-server/dist/index.mjs"
+healthcheckPath = "/api/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "api"
+
+[services.variables]
+PORT = "3000"
+NODE_ENV = "production"

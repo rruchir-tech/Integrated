@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const experimentComments = pgTable("experiment_comments", {
   id: serial("id").primaryKey(),
+  user_id: text("user_id").notNull(),
   experiment_id: integer("experiment_id").notNull(),
   comment_type: text("comment_type").notNull(),
   target_reference: text("target_reference"),

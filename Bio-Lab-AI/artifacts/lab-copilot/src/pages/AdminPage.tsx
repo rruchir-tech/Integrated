@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Shield, Users, Database, Ban, Flag, ClipboardList, Activity, Plus, Trash2 } from "lucide-react";
 import { useUser } from "@clerk/react";
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-const APPROVED_ADMIN_EMAIL = "dasu.srivanth@gmail.com";
+const APPROVED_ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL ?? "").trim().toLowerCase();
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 async function fetchJson(path: string, init?: RequestInit) {

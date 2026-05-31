@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db, conversations, messages, experiments } from "@workspace/db";
 import {
   CreateGeminiConversationBody,
@@ -7,6 +7,7 @@ import {
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
@@ -183,9 +184,11 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       .where(eq(messages.conversationId, convId))
       .orderBy(messages.createdAt);
 
+    const userId = getAuth(req).userId!;
     const allExperiments = await db
       .select()
       .from(experiments)
+      .where(eq(experiments.user_id, userId))
       .orderBy(desc(experiments.date));
 
     let systemInstruction = LAB_SYSTEM_PROMPT;

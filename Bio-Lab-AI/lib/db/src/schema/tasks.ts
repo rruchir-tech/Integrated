@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
+  user_id: text("user_id").notNull(),
   experiment_id: integer("experiment_id").notNull(),
   source_recommendation_index: integer("source_recommendation_index"),
   title: text("title").notNull(),

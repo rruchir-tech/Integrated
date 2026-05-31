@@ -4,7 +4,12 @@ import { db, experiments } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const APPROVED_ADMIN_EMAILS = new Set(["dasu.srivanth@gmail.com"]);
+const APPROVED_ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 const router: IRouter = Router();
 

@@ -1,17 +1,154 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGetDashboard, getGetDashboardQueryKey } from "@workspace/api-client-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Activity, Beaker, AlertTriangle, CheckCircle2, TrendingUp, Clock, FlaskConical, Microscope } from "lucide-react";
+import { Activity, Beaker, AlertTriangle, CheckCircle2, TrendingUp, Clock, FlaskConical, Microscope, Upload, BookOpen, BrainCircuit, ChevronRight, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { format, parseISO } from "date-fns";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { useEffect } from "react";
 import { AskAnythingChat } from "@/components/dashboard/AskAnythingChat";
 import { Badge } from "@/components/ui/badge";
 
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
+
+// ─────────────────────────────────────────────────────────────
+//  Onboarding empty state — shown when user has 0 experiments
+// ─────────────────────────────────────────────────────────────
+
+const steps = [
+  {
+    icon: Upload,
+    color: "text-cyan-400",
+    bg: "bg-cyan-400/10",
+    title: "Upload your first data file",
+    body: "Drag in a plate reader export, qPCR file, NanoDrop CSV — any instrument output. Lab Copilot parses it automatically.",
+  },
+  {
+    icon: BrainCircuit,
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+    title: "AI analyzes the results",
+    body: "Gemini 2.5 reads your raw data, calculates statistics, flags anomalies, and writes a plain-language summary.",
+  },
+  {
+    icon: Sparkles,
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    title: "Get actionable next steps",
+    body: "Your copilot remembers every experiment and learns your research direction — then tells you exactly what to run next.",
+  },
+];
+
+function OnboardingEmptyState() {
+  const [, navigate] = useLocation();
+
+  return (
+    <motion.div
+      className="min-h-[70vh] flex flex-col items-center justify-center py-16 px-4"
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      {/* Hero */}
+      <div className="text-center max-w-xl mb-12">
+        <motion.div
+          className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
+        >
+          <FlaskConical className="h-10 w-10 text-primary" />
+        </motion.div>
+
+        <motion.h1
+          className="text-3xl sm:text-4xl font-bold tracking-tight mb-3"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          Your lab's second brain starts here
+        </motion.h1>
+
+        <motion.p
+          className="text-muted-foreground text-base sm:text-lg leading-relaxed"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          Lab Copilot remembers every experiment, quantifies your data across instruments,
+          and tells you what to run next — so you spend less time in spreadsheets and more time discovering.
+        </motion.p>
+      </div>
+
+      {/* Steps */}
+      <div className="grid gap-4 sm:grid-cols-3 w-full max-w-3xl mb-10">
+        {steps.map((step, i) => (
+          <motion.div
+            key={step.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 + i * 0.1, type: "spring", stiffness: 180, damping: 20 }}
+          >
+            <Card className="h-full border border-border/60 hover:border-primary/40 transition-all hover:shadow-sm">
+              <CardContent className="pt-6 space-y-3">
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${step.bg}`}>
+                  <step.icon className={`h-5 w-5 ${step.color}`} />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm mb-1">
+                    <span className="text-muted-foreground font-mono mr-1">{i + 1}.</span>
+                    {step.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{step.body}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* CTAs */}
+      <motion.div
+        className="flex flex-col sm:flex-row gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.55 }}
+      >
+        <Button
+          size="lg"
+          className="gap-2 font-semibold px-6"
+          onClick={() => navigate("/experiments/new")}
+        >
+          <Upload className="h-4 w-4" />
+          Upload your first experiment
+          <ChevronRight className="h-4 w-4 opacity-70" />
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="gap-2"
+          onClick={() => navigate("/templates")}
+        >
+          <BookOpen className="h-4 w-4" />
+          Browse templates
+        </Button>
+      </motion.div>
+
+      {/* Supported instruments hint */}
+      <motion.p
+        className="mt-8 text-xs text-muted-foreground text-center max-w-md"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.7 }}
+      >
+        Supports Synergy H1, SpectraMax, Bio-Rad CFX96, QuantStudio, NanoDrop, Countess, BD FACS, and more.
+      </motion.p>
+    </motion.div>
+  );
+}
 
 function AnimatedCounter({ value }: { value: number }) {
   const motionValue = useMotionValue(0);
@@ -48,6 +185,11 @@ export function Dashboard() {
   }
 
   if (!dashboard) return null;
+
+  // Show onboarding for brand-new users
+  if (dashboard.total_experiments === 0) {
+    return <OnboardingEmptyState />;
+  }
 
   return (
     <div className="space-y-6">

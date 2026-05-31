@@ -1,6 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 
-const APPROVED_ADMIN_EMAILS = new Set(["dasu.srivanth@gmail.com"]);
+const adminEmailsRaw = process.env.ADMIN_EMAILS ?? "";
+const APPROVED_ADMIN_EMAILS = new Set(
+  adminEmailsRaw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
