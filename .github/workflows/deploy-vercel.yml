@@ -1,0 +1,73 @@
+name: Deploy Frontend to Vercel
+
+# Auto-deploys the lab-copilot frontend to Vercel on every push to main.
+# Bypasses Vercel's native Git integration — auth is via VERCEL_TOKEN.
+#
+# Required GitHub repo secrets (Settings > Secrets and variables > Actions):
+#   VERCEL_TOKEN       - Vercel access token
+#   VERCEL_ORG_ID      - Vercel team id (team_sjFerdwhnH6Sb97uAPHwrcDr)
+#   VERCEL_PROJECT_ID  - Vercel project id (prj_fWSjVBvS3UZlt172FHcFB9xMk9Qz)
+#
+# VITE_* values below are PUBLIC (they get baked into the client bundle), so
+# they are intentionally inlined here rather than stored as secrets.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Bio-Lab-AI/artifacts/lab-copilot/**'
+      - 'Bio-Lab-AI/lib/**'
+      - 'Bio-Lab-AI/pnpm-lock.yaml'
+      - 'Bio-Lab-AI/pnpm-workspace.yaml'
+      - '.github/workflows/deploy-vercel.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Bio-Lab-AI
+    env:
+      VITE_API_URL: https://biolab-copilot-api.onrender.com
+      VITE_CLERK_PUBLISHABLE_KEY: pk_test_b3Blbi1wZWdhc3VzLTM5LmNsZXJrLmFjY291bnRzLmRldiQ
+      VITE_ADMIN_EMAIL: rruchir28@gmail.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: Bio-Lab-AI/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm --filter @workspace/lab-copilot run build
+
+      - name: Add SPA rewrite for client-side routing
+        run: |
+          cat > artifacts/lab-copilot/dist/public/vercel.json <<'JSON'
+          { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+          JSON
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy to Vercel (production)
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: >
+          vercel deploy artifacts/lab-copilot/dist/public
+          --prod --yes
+          --token=${{ secrets.VERCEL_TOKEN }}
