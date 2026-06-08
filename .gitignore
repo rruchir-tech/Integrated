@@ -1,0 +1,41 @@
+# --- Secrets (never commit) ---
+env-variables.txt
+vercel-deploy.py
+*.env
+.env
+.env.*
+*.pem
+*.key
+
+# --- Local deploy-attempt scratch files ---
+deploy-ps.ps1
+deploy-ps2.ps1
+deploy-vbs.vbs
+deploy-vercel.ps1
+deploy.sh
+deploy2.sh
+deploy-log2.txt
+vercel-deploy-log.txt
+dist-deploy/
+find-node.bat
+find-node.vbs
+find-node2.vbs
+find-node3.ps1
+find-node4.ps1
+node-diag.txt
+node-diag2.txt
+py-launcher.txt
+run-deploy.bat
+run-deploy2.bat
+run-deploy3.bat
+run-deploy5.bat
+run-python-deploy.ps1
+test-bash.sh
+test.vbs
+vbs-test.txt
+_tmp_*
+
+# --- Dependencies / build output ---
+node_modules/
+dist/
+.vercel/
