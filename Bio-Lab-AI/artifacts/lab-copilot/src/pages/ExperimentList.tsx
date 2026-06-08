@@ -30,15 +30,29 @@ const STATUS_FILTERS = [
 export function ExperimentList() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [assayFilter, setAssayFilter] = useState<string>("all");
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
+  const listParams = {
+    search: search || undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    assay_type: assayFilter !== "all" ? assayFilter : undefined,
+  };
+
   const { data: experiments, isLoading } = useListExperiments(
-    { 
-      search: search || undefined,
-      status: statusFilter !== "all" ? statusFilter : undefined
-    }, 
-    { query: { queryKey: getListExperimentsQueryKey({ search, status: statusFilter !== "all" ? statusFilter : undefined }) } }
+    listParams,
+    { query: { queryKey: getListExperimentsQueryKey(listParams) } }
   );
+
+  // Unfiltered fetch (react-query cached) used only to populate the assay-type
+  // dropdown with every assay the scientist has, regardless of active filter.
+  const { data: allExperiments } = useListExperiments(
+    {},
+    { query: { queryKey: getListExperimentsQueryKey({}) } }
+  );
+  const assayTypes = Array.from(
+    new Set((allExperiments ?? []).map((e) => e.assay_type).filter(Boolean))
+  ).sort();
 
   return (
     <div className="space-y-5 flex flex-col h-[calc(100vh-4rem)]">
@@ -100,6 +114,23 @@ export function ExperimentList() {
               {label}
             </motion.button>
           ))}
+
+          {assayTypes.length > 0 && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              <Select value={assayFilter} onValueChange={setAssayFilter}>
+                <SelectTrigger className="h-8 w-[190px] text-xs bg-background">
+                  <SelectValue placeholder="All assay types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All assay types</SelectItem>
+                  {assayTypes.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -123,7 +154,7 @@ export function ExperimentList() {
             <p className="text-muted-foreground text-sm max-w-sm mt-1">
               {search ? `No results for "${search}"` : "No experiments match the current filter."}
             </p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setStatusFilter("all"); }}>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setStatusFilter("all"); setAssayFilter("all"); }}>
               <X className="h-3.5 w-3.5 mr-1.5" />
               Clear filters
             </Button>
