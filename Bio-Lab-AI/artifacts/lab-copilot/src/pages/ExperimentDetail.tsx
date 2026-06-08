@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 import {
   BrainCircuit, Calendar, FlaskConical, Microscope, FileText,
-  CheckCircle2, AlertTriangle, Pencil, MessageSquare, CheckSquare,
+  CheckCircle2, AlertTriangle, Pencil, MessageSquare, CheckSquare, FileDown,
 } from "lucide-react";
 import { CopilotChat } from "@/components/chat/CopilotChat";
 import { PlateHeatmap } from "@/components/PlateHeatmap";
@@ -26,6 +26,7 @@ import remarkGfm from "remark-gfm";
 import { CommentsPanel } from "@/components/experiment/CommentsPanel";
 import { ExperimentTasksPanel } from "@/components/experiment/ExperimentTasksPanel";
 import { RecommendationActions } from "@/components/experiment/RecommendationActions";
+import { printExperimentReport } from "@/lib/printExperimentReport";
 
 const MotionButton = motion.create(Button);
 
@@ -127,6 +128,16 @@ export function ExperimentDetail() {
               Edit
             </MotionButton>
           </Link>
+          <MotionButton
+            variant="outline"
+            className="gap-2"
+            onClick={() => printExperimentReport({ experiment, rawData, suggestions })}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+          >
+            <FileDown className="h-4 w-4" />
+            Export PDF
+          </MotionButton>
           <MotionButton
             onClick={() => analyzeMutation.mutate({ id: expId, data: {} })}
             disabled={analyzeMutation.isPending}
