@@ -9,7 +9,12 @@
  */
 import { createContext, useContext } from "react";
 
-const APPROVED_ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL ?? "").trim().toLowerCase();
+const APPROVED_ADMIN_EMAILS = new Set(
+  (import.meta.env.VITE_ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 export interface AppUser {
   displayName: string;
@@ -61,8 +66,7 @@ export function ClerkUserProvider({ children }: { children: React.ReactNode }) {
     ((firstName[0] ?? "") + (lastName[0] ?? "")).toUpperCase() ||
     displayName[0]?.toUpperCase() ||
     "R";
-  const isAdmin =
-    email.trim().toLowerCase() === APPROVED_ADMIN_EMAIL;
+  const isAdmin = APPROVED_ADMIN_EMAILS.has(email.trim().toLowerCase());
 
   const value: AppUser = {
     displayName,
