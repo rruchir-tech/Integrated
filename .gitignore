@@ -39,3 +39,6 @@ _tmp_*
 node_modules/
 dist/
 .vercel/
+
+# pnpm content-addressable store
+.pnpm-store/

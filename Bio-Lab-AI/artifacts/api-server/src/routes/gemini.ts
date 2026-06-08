@@ -240,6 +240,23 @@ router.post("/gemini/general-chat", async (req, res) => {
       return;
     }
 
+    // Inject the user's own experiment history so "Ask Anything" can answer
+    // questions about their real data (the "second brain" behaviour).
+    const userId = getAuth(req).userId!;
+    const experimentRows = await db
+      .select()
+      .from(experiments)
+      .where(eq(experiments.user_id, userId))
+      .orderBy(desc(experiments.created_at))
+      .limit(30);
+
+    const systemInstruction =
+      experimentRows.length > 0
+        ? `${LAB_SYSTEM_PROMPT}\n\nThis scientist's most recent experiments:\n${buildLabHistory(
+            experimentRows,
+          )}\n\nWhen the question relates to their work, ground your answer in these experiments and cite them by name. For general scientific questions, answer normally.`
+        : GENERAL_SYSTEM_PROMPT;
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -248,7 +265,7 @@ router.post("/gemini/general-chat", async (req, res) => {
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: message }] }],
       config: {
-        systemInstruction: GENERAL_SYSTEM_PROMPT,
+        systemInstruction,
         maxOutputTokens: 4096,
       },
     });
