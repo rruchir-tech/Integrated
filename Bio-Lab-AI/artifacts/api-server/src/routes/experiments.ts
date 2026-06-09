@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, sql, like, and } from "drizzle-orm";
+import { eq, desc, sql, like, and, or, isNull } from "drizzle-orm";
 import { db, experiments, conversations, messages, experimentTemplates, recommendationActions, experimentComments, tasks } from "@workspace/db";
 import {
   CreateExperimentBody,
@@ -289,21 +289,29 @@ ${relatedContext}`;
   }
 });
 
-router.get("/templates", async (_req, res) => {
-  const rows = await db.select().from(experimentTemplates).orderBy(desc(experimentTemplates.created_at));
+router.get("/templates", async (req, res) => {
+  const userId = getAuth(req).userId!;
+  const rows = await db
+    .select()
+    .from(experimentTemplates)
+    .where(or(isNull(experimentTemplates.user_id), eq(experimentTemplates.user_id, userId)))
+    .orderBy(desc(experimentTemplates.created_at));
   res.json(rows);
 });
 
 router.get("/templates/:id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.id);
   const rows = await db.select().from(experimentTemplates).where(eq(experimentTemplates.id, id)).limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Template not found" });
+  if (rows[0].user_id && rows[0].user_id !== userId) return res.status(404).json({ error: "Template not found" });
   return res.json(rows[0]);
 });
 
 router.post("/templates", async (req, res) => {
   try {
-    const row = await db.insert(experimentTemplates).values(req.body).returning();
+    const userId = getAuth(req).userId!;
+    const row = await db.insert(experimentTemplates).values({ ...req.body, user_id: userId }).returning();
     return res.status(201).json(row[0]);
   } catch (err) {
     return res.status(400).json({ error: String(err) });
@@ -311,15 +319,17 @@ router.post("/templates", async (req, res) => {
 });
 
 router.put("/templates/:id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.id);
-  const row = await db.update(experimentTemplates).set({ ...req.body, updated_at: new Date() }).where(eq(experimentTemplates.id, id)).returning();
+  const row = await db.update(experimentTemplates).set({ ...req.body, updated_at: new Date() }).where(and(eq(experimentTemplates.id, id), eq(experimentTemplates.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Template not found" });
   return res.json(row[0]);
 });
 
 router.delete("/templates/:id", async (req, res) => {
+  const userId = getAuth(req).userId!;
   const id = parseInt(req.params.id);
-  const row = await db.delete(experimentTemplates).where(eq(experimentTemplates.id, id)).returning();
+  const row = await db.delete(experimentTemplates).where(and(eq(experimentTemplates.id, id), eq(experimentTemplates.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Template not found" });
   return res.status(204).send();
 });

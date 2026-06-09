@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const experimentTemplates = pgTable("experiment_templates", {
   id: serial("id").primaryKey(),
+  user_id: text("user_id"),
   name: text("name").notNull(),
   assay_type: text("assay_type").notNull(),
   instrument: text("instrument").notNull().default("Synergy H1"),
@@ -19,6 +20,7 @@ export const experimentTemplates = pgTable("experiment_templates", {
 
 export const insertExperimentTemplateSchema = createInsertSchema(experimentTemplates).omit({
   id: true,
+  user_id: true,
   created_at: true,
   updated_at: true,
 });

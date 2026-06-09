@@ -35,13 +35,14 @@ function buildLabHistory(experimentRows: ExperimentRow[]): string {
 
 router.get("/gemini/conversations", async (req, res) => {
   try {
+    const userId = getAuth(req).userId!;
     const query = ListGeminiConversationsQueryParams.parse(req.query);
     let rows: ConversationRow[] = [];
     if (query.experiment_id) {
       const exp = await db
         .select({ conversation_id: experiments.conversation_id })
         .from(experiments)
-        .where(eq(experiments.id, query.experiment_id))
+        .where(and(eq(experiments.id, query.experiment_id), eq(experiments.user_id, userId)))
         .limit(1);
       if (exp[0]?.conversation_id) {
         rows = await db
@@ -51,12 +52,17 @@ router.get("/gemini/conversations", async (req, res) => {
           .orderBy(desc(conversations.createdAt));
       }
     } else {
-      rows = await db.select().from(conversations).orderBy(desc(conversations.createdAt));
+      rows = await db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.user_id, userId))
+        .orderBy(desc(conversations.createdAt));
     }
 
     const expRows = await db
       .select({ id: experiments.id, conversation_id: experiments.conversation_id })
-      .from(experiments);
+      .from(experiments)
+      .where(eq(experiments.user_id, userId));
     const convToExpMap: Record<number, number> = {};
     for (const e of expRows) {
       if (e.conversation_id) convToExpMap[e.conversation_id] = e.id;
@@ -71,7 +77,8 @@ router.get("/gemini/conversations", async (req, res) => {
 router.post("/gemini/conversations", async (req, res) => {
   try {
     const body = CreateGeminiConversationBody.parse(req.body);
-    const inserted = await db.insert(conversations).values({ title: body.title }).returning();
+    const userId = getAuth(req).userId!;
+    const inserted = await db.insert(conversations).values({ title: body.title, user_id: userId }).returning();
     const conv = inserted[0];
     if (!conv) {
       res.status(500).json({ error: "Failed to create conversation" });
@@ -100,8 +107,9 @@ router.post("/gemini/conversations", async (req, res) => {
 router.get("/gemini/conversations/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const userId = getAuth(req).userId!;
     const rows = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
-    if (!rows[0]) {
+    if (!rows[0] || rows[0].user_id !== userId) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
@@ -127,7 +135,8 @@ router.get("/gemini/conversations/:id", async (req, res) => {
 router.delete("/gemini/conversations/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const deleted = await db.delete(conversations).where(eq(conversations.id, id)).returning();
+    const userId = getAuth(req).userId!;
+    const deleted = await db.delete(conversations).where(and(eq(conversations.id, id), eq(conversations.user_id, userId))).returning();
     if (!deleted[0]) {
       res.status(404).json({ error: "Not found" });
       return;
@@ -141,6 +150,16 @@ router.delete("/gemini/conversations/:id", async (req, res) => {
 router.get("/gemini/conversations/:id/messages", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const userId = getAuth(req).userId!;
+    const owner = await db
+      .select({ user_id: conversations.user_id })
+      .from(conversations)
+      .where(eq(conversations.id, id))
+      .limit(1);
+    if (!owner[0] || owner[0].user_id !== userId) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
     const msgs = await db
       .select()
       .from(messages)
@@ -162,7 +181,7 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       .from(conversations)
       .where(eq(conversations.id, convId))
       .limit(1);
-    if (!conv[0]) {
+    if (!conv[0] || conv[0].user_id !== getAuth(req).userId!) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
