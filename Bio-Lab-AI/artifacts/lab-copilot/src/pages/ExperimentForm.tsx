@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { apiFetch } from "@/lib/apiFetch";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useLocation } from "wouter";
@@ -98,7 +99,7 @@ export function ExperimentForm() {
 
   const { data: templates } = useQuery<Template[]>({
     queryKey: ["templates"],
-    queryFn: () => fetch("/api/templates").then((r) => r.json()),
+    queryFn: () => apiFetch("/api/templates").then((r) => r.json()),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -149,7 +150,7 @@ export function ExperimentForm() {
 
       setSynergyFileB64(b64);
 
-      const resp = await fetch("/api/experiments/parse-synergy", {
+      const resp = await apiFetch("/api/experiments/parse-synergy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_content_b64: b64, file_name: selectedFile.name }),

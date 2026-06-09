@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckSquare, Plus, Circle, CheckCircle2, Clock, Loader2, Trash2 } from "lucide-react";
@@ -65,7 +66,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 const nextStatus: Record<string, string> = { todo: "in_progress", in_progress: "done", done: "todo" };
 
 function fetchTasks(expId: number): Promise<Task[]> {
-  return fetch(`/api/experiments/${expId}/tasks`).then((r) => r.json());
+  return apiFetch(`/api/experiments/${expId}/tasks`).then((r) => r.json());
 }
 
 export function ExperimentTasksPanel({ experimentId, prefillTitle, prefillRecIdx }: ExperimentTasksPanelProps) {
@@ -88,7 +89,7 @@ export function ExperimentTasksPanel({ experimentId, prefillTitle, prefillRecIdx
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form) =>
-      fetch("/api/tasks", {
+      apiFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export function ExperimentTasksPanel({ experimentId, prefillTitle, prefillRecIdx
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
-      fetch(`/api/tasks/${id}`, {
+      apiFetch(`/api/tasks/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -121,7 +122,7 @@ export function ExperimentTasksPanel({ experimentId, prefillTitle, prefillRecIdx
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => fetch(`/api/tasks/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => apiFetch(`/api/tasks/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks", experimentId] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });

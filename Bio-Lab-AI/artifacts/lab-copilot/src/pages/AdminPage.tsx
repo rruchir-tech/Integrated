@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,11 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Shield, Users, Database, Ban, Flag, ClipboardList, Activity, Plus, Trash2 } from "lucide-react";
 import { useUser } from "@clerk/react";
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 async function fetchJson(path: string, init?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await apiFetch(path, {
     ...init,
     headers: {
       "Content-Type": "application/json",

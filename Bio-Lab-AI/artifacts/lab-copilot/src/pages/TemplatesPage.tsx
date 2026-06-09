@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, BookTemplate, Pencil, Trash2, FlaskConical, Microscope, Loader2, X } from "lucide-react";
@@ -82,7 +83,7 @@ const INSTRUMENTS = [
 ];
 
 function fetchTemplates(): Promise<Template[]> {
-  return fetch("/api/templates").then((r) => r.json());
+  return apiFetch("/api/templates").then((r) => r.json());
 }
 
 export function TemplatesPage() {
@@ -100,7 +101,7 @@ export function TemplatesPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: TemplateForm) =>
-      fetch("/api/templates", {
+      apiFetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -115,7 +116,7 @@ export function TemplatesPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: TemplateForm & { id: number }) =>
-      fetch(`/api/templates/${data.id}`, {
+      apiFetch(`/api/templates/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -130,7 +131,7 @@ export function TemplatesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/api/templates/${id}`, { method: "DELETE" }),
+      apiFetch(`/api/templates/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       toast({ title: "Template deleted" });

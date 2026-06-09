@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,7 +8,6 @@ import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const SYSTEM_PROMPT = "You are an expert biotech and cell biology advisor. Answer general scientific questions, explain concepts, help with protocol design, and discuss biotech topics. Be concise and scientific.";
 
 export function AskAnythingChat() {
@@ -23,7 +23,7 @@ export function AskAnythingChat() {
     setResponse("");
 
     try {
-      const res = await fetch(`${BASE}/api/gemini/general-chat`, {
+      const res = await apiFetch("/api/gemini/general-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: content, systemPrompt: SYSTEM_PROMPT }),

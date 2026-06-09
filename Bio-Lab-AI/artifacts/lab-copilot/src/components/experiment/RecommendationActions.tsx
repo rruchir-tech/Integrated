@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -54,7 +55,7 @@ interface RecommendationActionsProps {
 }
 
 function fetchActions(expId: number): Promise<RecommendationAction[]> {
-  return fetch(`/api/experiments/${expId}/recommendations/actions`).then((r) => r.json());
+  return apiFetch(`/api/experiments/${expId}/recommendations/actions`).then((r) => r.json());
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
@@ -80,7 +81,7 @@ export function RecommendationActions({ experimentId, suggestions }: Recommendat
 
   const approveMutation = useMutation({
     mutationFn: ({ idx, note }: { idx: number; note?: string }) =>
-      fetch(`/api/experiments/${experimentId}/recommendations/${idx}/approve`, {
+      apiFetch(`/api/experiments/${experimentId}/recommendations/${idx}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reviewer_name: reviewerName || undefined, reviewer_note: note }),
@@ -94,7 +95,7 @@ export function RecommendationActions({ experimentId, suggestions }: Recommendat
 
   const rejectMutation = useMutation({
     mutationFn: ({ idx, sug, note }: { idx: number; sug: Suggestion; note?: string }) =>
-      fetch(`/api/experiments/${experimentId}/recommendations/${idx}/reject`, {
+      apiFetch(`/api/experiments/${experimentId}/recommendations/${idx}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: sug.title, original: sug, reviewer_name: reviewerName || undefined, reviewer_note: note }),
@@ -108,7 +109,7 @@ export function RecommendationActions({ experimentId, suggestions }: Recommendat
 
   const editMutation = useMutation({
     mutationFn: (payload: Partial<Suggestion> & { idx: number; original: Suggestion; reviewer_note?: string }) =>
-      fetch(`/api/experiments/${experimentId}/recommendations/${payload.idx}/edit`, {
+      apiFetch(`/api/experiments/${experimentId}/recommendations/${payload.idx}/edit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

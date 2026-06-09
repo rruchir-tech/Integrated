@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, Send, Trash2, Loader2 } from "lucide-react";
@@ -26,7 +27,7 @@ interface CommentsPanelProps {
 }
 
 function fetchComments(expId: number): Promise<Comment[]> {
-  return fetch(`/api/experiments/${expId}/comments`).then((r) => r.json());
+  return apiFetch(`/api/experiments/${expId}/comments`).then((r) => r.json());
 }
 
 const COMMENT_TYPES = [
@@ -53,7 +54,7 @@ export function CommentsPanel({ experimentId }: CommentsPanelProps) {
 
   const addMutation = useMutation({
     mutationFn: (data: { author_name: string; content: string; comment_type: string }) =>
-      fetch(`/api/experiments/${experimentId}/comments`, {
+      apiFetch(`/api/experiments/${experimentId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -66,7 +67,7 @@ export function CommentsPanel({ experimentId }: CommentsPanelProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => fetch(`/api/comments/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => apiFetch(`/api/comments/${id}`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["comments", experimentId] }),
     onError: () => toast({ title: "Error", description: "Failed to delete comment.", variant: "destructive" }),
   });

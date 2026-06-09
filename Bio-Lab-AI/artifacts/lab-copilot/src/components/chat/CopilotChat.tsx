@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { Send, Bot, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,7 +62,7 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
     });
 
     try {
-      const response = await fetch(`/api/gemini/conversations/${conversationId}/messages`, {
+      const response = await apiFetch(`/api/gemini/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: userMessage }),

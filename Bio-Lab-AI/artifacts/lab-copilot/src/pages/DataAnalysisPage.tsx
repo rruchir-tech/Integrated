@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useListExperiments, useGetExperiment, getListExperimentsQueryKey, getGetExperimentQueryKey } from "@workspace/api-client-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -30,7 +31,6 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
 interface PlateSummary {
   instrument?: string;
@@ -271,7 +271,7 @@ export function DataAnalysisPage() {
     setStreamError(null);
 
     try {
-      const response = await fetch(`${BASE}/api/experiments/${selectedId}/data-analysis`, {
+      const response = await apiFetch(`/api/experiments/${selectedId}/data-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
