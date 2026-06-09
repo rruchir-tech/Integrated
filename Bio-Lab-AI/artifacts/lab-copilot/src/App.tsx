@@ -21,7 +21,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DemoUserProvider, ClerkUserProvider } from "@/contexts/UserContext";
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 
 // ── API base URL ─────────────────────────────────────────────────────────────
 // When frontend and API are on different origins (Vercel + Render),
@@ -32,6 +32,22 @@ if (apiUrl) setBaseUrl(apiUrl);
 // ── Auth mode ─────────────────────────────────────────────────────────────────
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const DEMO_MODE = !clerkPubKey;
+
+// ── API auth token ────────────────────────────────────────────────────────────
+// Cross-origin (Vercel frontend -> Render API) means the Clerk session cookie is
+// NOT sent automatically, so the generated API client must attach a bearer token.
+// Resolved per-request from the global Clerk instance (ready by the time any
+// request fires). Skipped in demo mode (no Clerk / backend needs no auth).
+if (!DEMO_MODE) {
+  setAuthTokenGetter(async () => {
+    try {
+      const clerk = (window as unknown as { Clerk?: { session?: { getToken?: () => Promise<string | null> } } }).Clerk;
+      return (await clerk?.session?.getToken?.()) ?? null;
+    } catch {
+      return null;
+    }
+  });
+}
 
 const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
