@@ -5,7 +5,7 @@ import * as z from "zod";
 import { useLocation } from "wouter";
 import { useCreateExperiment } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { UploadCloud, Loader2, FlaskConical, X, AlertTriangle, CheckCircle2, BookTemplate } from "lucide-react";
+import { UploadCloud, Loader2, FlaskConical, X, AlertTriangle, CheckCircle2, BookTemplate, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -263,6 +263,49 @@ export function ExperimentForm() {
   const STEPS = ["Import Data", "Experiment Details", "Review & Save"];
   const [step, setStep] = useState(0);
 
+  const [aiGoal, setAiGoal] = useState("");
+  const [generatingProtocol, setGeneratingProtocol] = useState(false);
+
+  async function generateProtocol() {
+    const goal = aiGoal.trim();
+    if (!goal) return;
+    setGeneratingProtocol(true);
+    try {
+      const resp = await apiFetch("/api/gemini/generate-protocol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, assay_type: form.getValues("assay_type") || undefined }),
+      });
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e.error || "Generation failed");
+      }
+      const p = await resp.json();
+      if (p.title) form.setValue("name", p.title);
+      if (p.assay_type) form.setValue("assay_type", p.assay_type);
+      if (p.instrument) form.setValue("instrument", p.instrument);
+      const notes = [
+        p.objective ? `Objective: ${p.objective}` : null,
+        Array.isArray(p.materials) && p.materials.length ? `Materials:\n- ${p.materials.join("\n- ")}` : null,
+        Array.isArray(p.controls) && p.controls.length ? `Controls:\n- ${p.controls.join("\n- ")}` : null,
+        p.plate_layout ? `Plate layout: ${p.plate_layout}` : null,
+        Array.isArray(p.steps) && p.steps.length ? `Protocol:\n${p.steps.join("\n")}` : null,
+        p.expected_readout ? `Expected readout: ${p.expected_readout}` : null,
+        p.suggested_analysis ? `Suggested analysis: ${p.suggested_analysis}` : null,
+      ].filter(Boolean).join("\n\n");
+      if (notes) form.setValue("notes", notes);
+      toast({ title: "Protocol generated", description: "Review and adjust the pre-filled fields below." });
+    } catch (err) {
+      toast({
+        title: "Couldn't generate protocol",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingProtocol(false);
+    }
+  }
+
   const canProceedToStep1 = true;
   const canProceedToStep2 = form.watch("name")?.length >= 2 && form.watch("assay_type")?.length >= 2;
 
@@ -306,6 +349,37 @@ export function ExperimentForm() {
           )}
         </motion.div>
       )}
+
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 p-4 rounded-xl border border-violet-400/20 bg-violet-400/5 space-y-3"
+      >
+        <div className="flex items-center gap-2 text-sm font-medium text-violet-300">
+          <Sparkles className="h-4 w-4" />
+          Design with AI
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Describe your goal — AI drafts a bench-ready protocol and pre-fills the fields below.
+        </p>
+        <Textarea
+          value={aiGoal}
+          onChange={(e) => setAiGoal(e.target.value)}
+          placeholder="e.g. Test Compound-X cytotoxicity on HeLa cells across an 8-point dose response and estimate IC50"
+          rows={2}
+          className="text-sm"
+        />
+        <Button
+          type="button"
+          size="sm"
+          onClick={generateProtocol}
+          disabled={generatingProtocol || !aiGoal.trim()}
+          className="gap-2"
+        >
+          {generatingProtocol ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {generatingProtocol ? "Designing…" : "Generate protocol"}
+        </Button>
+      </motion.div>
 
       <div className="mb-6">
         <div className="flex items-center gap-0">
