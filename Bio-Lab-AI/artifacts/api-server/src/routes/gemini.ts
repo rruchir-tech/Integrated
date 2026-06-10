@@ -6,7 +6,7 @@ import {
   SendGeminiMessageBody,
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
-import { generateContentStreamWithRetry } from "../lib/aiRetry";
+import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
 import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
@@ -301,6 +301,74 @@ router.post("/gemini/general-chat", async (req, res) => {
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
     res.end();
+  }
+});
+
+// ── AI protocol generation (wave 2) ───────────────────────────────────────────
+// Describe a research goal → get a structured, bench-ready protocol. Grounded in
+// the scientist's recent experiments for consistency. Returns JSON the frontend
+// can preview and use to pre-fill a new experiment.
+router.post("/gemini/generate-protocol", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const { goal, assay_type } = req.body as { goal?: string; assay_type?: string };
+    if (!goal?.trim()) {
+      res.status(400).json({ error: "A research goal / description is required" });
+      return;
+    }
+
+    const recent = await db
+      .select()
+      .from(experiments)
+      .where(eq(experiments.user_id, userId))
+      .orderBy(desc(experiments.created_at))
+      .limit(10);
+    const historyCtx = recent.length
+      ? `\n\nThe scientist's recent experiments (for context and consistency):\n${buildLabHistory(recent)}`
+      : "";
+
+    const systemInstruction = `You are an expert experimental designer for a cell and molecular biology lab. Given a research goal, design a rigorous, bench-ready protocol. Be specific and quantitative: state concentrations, volumes, timings, seeding densities, replicate counts, the plate/sample layout, and the exact controls required (positive, negative, vehicle, blank). Choose an appropriate assay and instrument. Keep it realistic, safe, and concise — no preamble.`;
+
+    const userPrompt = `Design a protocol for this goal: ${goal}${assay_type ? `\nPreferred assay type: ${assay_type}` : ""}${historyCtx}
+
+Respond in this exact JSON format:
+{
+  "title": "short experiment name",
+  "assay_type": "...",
+  "instrument": "...",
+  "objective": "one or two sentences",
+  "materials": ["reagent/equipment with key spec", "..."],
+  "controls": ["control and its purpose", "..."],
+  "plate_layout": "how samples/doses/controls are arranged",
+  "steps": ["numbered, actionable step", "..."],
+  "expected_readout": "what is measured and how it is interpreted",
+  "suggested_analysis": "the statistics/curve fit to apply (e.g. 4PL IC50, Z'-factor)"
+}`;
+
+    const response = await generateContentWithRetry({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      config: {
+        systemInstruction,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    const text = response.text ?? "{}";
+    let protocol: unknown;
+    try {
+      protocol = JSON.parse(text);
+    } catch {
+      res.status(502).json({ error: "AI returned a malformed protocol — please try again." });
+      return;
+    }
+
+    res.json(protocol);
+  } catch (err) {
+    req.log.error({ err }, "Failed to generate protocol");
+    res.status(500).json({ error: String(err) });
   }
 });
 
