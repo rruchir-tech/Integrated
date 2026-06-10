@@ -503,8 +503,17 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       (exp.raw_data_json?.includes('"_type":"plate96"') ?? false));
 
     const systemPrompt = isPlateReaderExp
-      ? `You are an expert lab scientist AI copilot specializing in plate reader assays (ELISA, absorbance, fluorescence, luminescence). When plate data is present, analyze: 1) Well-to-well variability (CV%), 2) Outlier wells (high/low flags), 3) Signal-to-background ratio, 4) Edge effects (peripheral vs. inner wells), 5) Blank/zero wells and their impact. Be specific — cite actual well IDs, absorbance values, and statistical metrics. Recommend concrete corrective actions if CV% > 20% or outliers are detected.`
-      : `You are an expert lab scientist AI copilot. You help scientists understand their experiments, diagnose issues, and plan next experiments. Always be specific and actionable, citing the data you see. If data is present, analyze it numerically.`;
+      ? `You are an expert plate-reader assay analyst (ELISA, absorbance, fluorescence, luminescence, viability). Analyze the plate data quantitatively and report HARD NUMBERS, not just descriptions.
+
+QC metrics: within-replicate CV%, outlier wells (cite specific well IDs and values), signal-to-background ratio, edge effects (peripheral vs. inner wells), and blank/zero wells.
+
+Quantitative readout — infer the assay from the metadata and plate layout, then compute the appropriate metric:
+- Viability / cytotoxicity dose-response (e.g. MTT, CTG, resazurin): normalize to % viability against the highest-signal (untreated) wells, fit a 4-parameter logistic, and report an IC50/EC50 estimate in the dose unit (state the assumed dose axis); flag if the IC50 falls outside the tested range.
+- ELISA / standard curve: fit the standard curve, report R^2, and interpolate the unknowns.
+- If positive and negative controls are identifiable, compute the Z'-factor and rate plate quality (Z' >= 0.5 excellent, 0-0.5 marginal, < 0 fail).
+
+Lead the summary with the key quantitative metrics (IC50/EC50, Z'-factor, % viability range, signal:background). Explicitly state any assumptions you made about plate layout, controls, or the dose axis. Recommend concrete corrective action if CV% > 20% or outliers are detected.`
+      : `You are an expert lab scientist AI copilot. Diagnose experiments and plan next steps. Be specific and quantitative — when data is present, compute the assay-appropriate readout (e.g. fold-change/ΔΔCt for qPCR, concentration from a standard curve, band ratios for blots) and lead with the hard numbers, citing the data you see. State any assumptions.`;
 
     const userPrompt = `Analyze this experiment and provide: 1) A concise summary of what happened, 2) Key observations, 3) Exactly 3 suggested next experiments in JSON format.
 
