@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { 
   useGetExperiment, 
@@ -62,6 +62,24 @@ export function ExperimentDetail() {
       }
     }
   });
+
+  // Auto-analyze once: when an experiment that has uploaded data is opened but
+  // hasn't been analyzed yet, kick off the AI analysis automatically so the
+  // user lands on a ready interpretation instead of an empty panel.
+  const autoAnalyzedRef = useRef(false);
+  useEffect(() => {
+    if (
+      experiment &&
+      !autoAnalyzedRef.current &&
+      experiment.raw_data_json &&
+      !experiment.ai_summary &&
+      !analyzeMutation.isPending
+    ) {
+      autoAnalyzedRef.current = true;
+      analyzeMutation.mutate({ id: expId, data: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [experiment, expId]);
 
   if (isLoading) {
     return (
