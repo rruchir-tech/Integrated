@@ -54,6 +54,8 @@ export function ExperimentList() {
     new Set((allExperiments ?? []).map((e) => e.assay_type).filter(Boolean))
   ).sort();
 
+  const hasActiveFilter = Boolean(search) || statusFilter !== "all" || assayFilter !== "all";
+
   return (
     <div className="space-y-5 flex flex-col h-[calc(100vh-4rem)]">
       <div className="flex items-center justify-between">
@@ -141,24 +143,60 @@ export function ExperimentList() {
               <Skeleton key={i} className="h-16 w-full rounded-lg" />
             ))}
           </div>
-        ) : experiments?.length === 0 ? (
+        ) : !experiments ? (
           <motion.div
             className="flex flex-col items-center justify-center h-full p-8 text-center"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
           >
             <div className="h-16 w-16 rounded-full bg-muted/50 border border-border flex items-center justify-center mb-4">
-              <Search className="h-7 w-7 text-muted-foreground" />
+              <AlertTriangle className="h-7 w-7 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold">No experiments found</h3>
+            <h3 className="text-lg font-semibold">Couldn’t load experiments</h3>
             <p className="text-muted-foreground text-sm max-w-sm mt-1">
-              {search ? `No results for "${search}"` : "No experiments match the current filter."}
+              Something went wrong fetching your runs. This is usually temporary.
             </p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setStatusFilter("all"); setAssayFilter("all"); }}>
-              <X className="h-3.5 w-3.5 mr-1.5" />
-              Clear filters
-            </Button>
           </motion.div>
+        ) : experiments.length === 0 ? (
+          hasActiveFilter ? (
+            <motion.div
+              className="flex flex-col items-center justify-center h-full p-8 text-center"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+            >
+              <div className="h-16 w-16 rounded-full bg-muted/50 border border-border flex items-center justify-center mb-4">
+                <Search className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold">No matching experiments</h3>
+              <p className="text-muted-foreground text-sm max-w-sm mt-1">
+                {search ? `No results for "${search}".` : "No experiments match the current filter."}
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setStatusFilter("all"); setAssayFilter("all"); }}>
+                <X className="h-3.5 w-3.5 mr-1.5" />
+                Clear filters
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              className="flex flex-col items-center justify-center h-full p-8 text-center"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+            >
+              <div className="h-16 w-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+                <Plus className="h-7 w-7 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">No experiments yet</h3>
+              <p className="text-muted-foreground text-sm max-w-sm mt-1">
+                Upload a plate reader export or instrument file — Lab Copilot parses, analyzes, and tracks it for you.
+              </p>
+              <Link href="/experiments/new">
+                <Button size="sm" className="mt-4">
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Create your first experiment
+                </Button>
+              </Link>
+            </motion.div>
+          )
         ) : (
           <div className="divide-y divide-border/50">
             <AnimatePresence initial={false}>

@@ -163,7 +163,7 @@ function AnimatedCounter({ value }: { value: number }) {
 }
 
 export function Dashboard() {
-  const { data: dashboard, isLoading } = useGetDashboard({
+  const { data: dashboard, isLoading, refetch } = useGetDashboard({
     query: { queryKey: getGetDashboardQueryKey() }
   });
   const hour = new Date().getHours();
@@ -184,7 +184,24 @@ export function Dashboard() {
     );
   }
 
-  if (!dashboard) return null;
+  // Data failed to load (e.g. transient API/network error) — show a clear,
+  // recoverable error state instead of a blank screen.
+  if (!dashboard) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted/50">
+          <AlertTriangle className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold">Couldn’t load your dashboard</h2>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          Something went wrong fetching your lab data. This is usually temporary.
+        </p>
+        <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   // Show onboarding for brand-new users
   if (dashboard.total_experiments === 0) {
