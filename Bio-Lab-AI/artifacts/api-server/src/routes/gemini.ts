@@ -6,7 +6,7 @@ import {
   SendGeminiMessageBody,
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
-import { ai } from "@workspace/integrations-gemini-ai";
+import { generateContentStreamWithRetry } from "../lib/aiRetry";
 import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
@@ -219,7 +219,7 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
 
     let fullResponse = "";
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: chatHistory.map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
@@ -280,7 +280,7 @@ router.post("/gemini/general-chat", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: message }] }],
       config: {

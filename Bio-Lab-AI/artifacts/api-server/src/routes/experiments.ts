@@ -7,7 +7,7 @@ import {
   ListExperimentsQueryParams,
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
-import { ai } from "@workspace/integrations-gemini-ai";
+import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
 import { getAuth } from "@clerk/express";
 import * as XLSX from "xlsx";
 
@@ -269,7 +269,7 @@ ${relatedContext}`;
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       config: { systemInstruction: systemPrompt, maxOutputTokens: 8192 },
@@ -485,7 +485,7 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       .limit(3);
 
     const dataContext = exp.raw_data_json
-      ? `\nParsed data summary: ${exp.raw_data_json.substring(0, 2000)}`
+      ? `\nParsed data (full plate): ${exp.raw_data_json.substring(0, 12000)}`
       : "\nNo file data uploaded.";
 
     const relatedContext = related.length > 0
@@ -529,7 +529,7 @@ Respond in this exact JSON format:
   ]
 }`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       config: {
@@ -626,7 +626,7 @@ Notes: ${e.notes ?? "None"}${e.ai_summary ? `\nPrevious AI analysis: ${e.ai_summ
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       config: {
