@@ -120,9 +120,9 @@ export function ExperimentDetail() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b pb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2 text-primary">{experiment.name}</h1>
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 border-b pb-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-primary break-words">{experiment.name}</h1>
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground font-mono">
             <div className="flex items-center gap-1.5">
               <Calendar className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function ExperimentDetail() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:flex-shrink-0">
           <StatusBadge status={experiment.status} />
           <Link href={`/experiments/${expId}/edit`}>
             <MotionButton variant="outline" className="gap-2" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
@@ -176,9 +176,9 @@ export function ExperimentDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main column */}
-        <div className="md:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6">
           <AnimatePresence>
             {experiment.notes && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>

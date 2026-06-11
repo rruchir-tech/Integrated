@@ -58,7 +58,7 @@ export function ExperimentList() {
 
   return (
     <div className="space-y-5 flex flex-col h-[calc(100vh-4rem)]">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Experiments</h1>
           <p className="text-sm text-muted-foreground mt-1">Search, filter, and jump back into your active runs.</p>
