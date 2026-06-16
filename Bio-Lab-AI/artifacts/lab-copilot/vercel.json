@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "buildCommand": "npx pnpm@9 install --no-frozen-lockfile && npx pnpm@9 --filter ./artifacts/lab-copilot run build",
+  "outputDirectory": "dist/public",
+  "installCommand": "echo skip"
+}

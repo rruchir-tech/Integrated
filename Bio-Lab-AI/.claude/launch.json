@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "API Server",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set NODE_ENV=development && set PORT=3001 && pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/api-server run start"],
+      "port": 3001
+    },
+    {
+      "name": "Lab Copilot",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@workspace/lab-copilot", "run", "dev"],
+      "port": 8081
+    },
+    {
+      "name": "Mockup Sandbox",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set PORT=8082 && set BASE_PATH=/ && pnpm --filter @workspace/mockup-sandbox run dev"],
+      "port": 8082
+    }
+  ]
+}

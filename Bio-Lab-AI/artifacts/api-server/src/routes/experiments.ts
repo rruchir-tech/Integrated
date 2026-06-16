@@ -545,6 +545,10 @@ Respond in this exact JSON format:
         systemInstruction: systemPrompt,
         maxOutputTokens: 8192,
         responseMimeType: "application/json",
+        // gemini-2.5-flash spends "thinking" tokens out of the output budget,
+        // which truncated the JSON answer mid-response. Disable thinking so the
+        // full structured response is returned and parses cleanly.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -553,7 +557,11 @@ Respond in this exact JSON format:
     try {
       parsed = JSON.parse(text);
     } catch {
-      parsed = { summary: text, suggestions: [] };
+      // Salvage the summary from a truncated/partial JSON response so the UI
+      // shows clean prose instead of raw JSON braces.
+      const m = text.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      const salvaged = m ? m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"') : text;
+      parsed = { summary: salvaged, suggestions: [] };
     }
 
     // Create a conversation for this experiment if it doesn't have one

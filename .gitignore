@@ -42,3 +42,6 @@ dist/
 
 # pnpm content-addressable store
 .pnpm-store/
+
+# Separate nested project (microscopy-platform) - tracked in its own repo
+Microscope/
