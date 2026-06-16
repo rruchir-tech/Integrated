@@ -15,7 +15,9 @@ import { format, parseISO } from "date-fns";
 import {
   BrainCircuit, Calendar, FlaskConical, Microscope, FileText,
   CheckCircle2, AlertTriangle, Pencil, MessageSquare, CheckSquare, FileDown,
+  Download, Image,
 } from "lucide-react";
+import { toPng } from "html-to-image";
 import { CopilotChat } from "@/components/chat/CopilotChat";
 import { PlateHeatmap } from "@/components/PlateHeatmap";
 import { useQueryClient } from "@tanstack/react-query";
@@ -67,6 +69,7 @@ export function ExperimentDetail() {
   // hasn't been analyzed yet, kick off the AI analysis automatically so the
   // user lands on a ready interpretation instead of an empty panel.
   const autoAnalyzedRef = useRef(false);
+  const heatmapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (
       experiment &&
@@ -80,6 +83,45 @@ export function ExperimentDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [experiment, expId]);
+
+  const downloadCsv = () => {
+    if (!experiment || !rawData?.wells) return;
+    const meta = [
+      `# Experiment: ${experiment.name}`,
+      `# Date: ${experiment.date}`,
+      `# Assay: ${experiment.assay_type}`,
+      `# Instrument: ${experiment.instrument}`,
+      `# Wavelength: ${rawData.metadata?.wavelength ?? "–"} nm`,
+      `# Protocol: ${rawData.metadata?.protocol ?? "–"}`,
+      "#",
+      "Well,Row,Col,Value,Status,CV_pct",
+    ].join("\n");
+    const rows = [...rawData.wells]
+      .sort((a: { well: string }, b: { well: string }) => a.well.localeCompare(b.well))
+      .map((w: { well: string; row: string; col: number; value: number | null; status: string; cv_pct: number | null }) =>
+        `${w.well},${w.row},${w.col},${w.value ?? ""},${w.status},${w.cv_pct ?? ""}`
+      )
+      .join("\n");
+    const blob = new Blob([`${meta}\n${rows}`], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${experiment.name.replace(/\s+/g, "_")}_${experiment.date}_plate.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const downloadPng = async () => {
+    if (!heatmapRef.current || !experiment) return;
+    try {
+      const dataUrl = await toPng(heatmapRef.current, { backgroundColor: "#0c1520", pixelRatio: 2 });
+      const a = document.createElement("a");
+      a.download = `${experiment.name.replace(/\s+/g, "_")}_heatmap.png`;
+      a.href = dataUrl;
+      a.click();
+    } catch {
+      // silently ignore if the element isn't rendered
+    }
+  };
 
   if (isLoading) {
     return (
@@ -101,6 +143,12 @@ export function ExperimentDetail() {
     ? (() => { try { return JSON.parse(experiment.raw_data_json!); } catch { return null; } })()
     : null;
   const isPlate96 = rawData?._type === "plate96";
+
+  const zPrime = (() => {
+    if (!experiment.ai_summary) return null;
+    const m = experiment.ai_summary.match(/Z['′']?[-\s]*(?:factor|prime)?[:\s=]+([0-9]*\.?[0-9]+)/i);
+    return m ? parseFloat(m[1]) : null;
+  })();
   const suggestions: {
     title: string;
     variable_to_change: string;
@@ -210,7 +258,7 @@ export function ExperimentDetail() {
                           <CardDescription className="font-mono mt-1">{experiment.file_name}</CardDescription>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-2 justify-end">
+                      <div className="flex flex-wrap gap-2 justify-end items-center">
                         {rawData.metadata?.wavelength && (
                           <Badge variant="secondary" className="font-mono text-xs">λ {rawData.metadata.wavelength} nm</Badge>
                         )}
@@ -231,17 +279,24 @@ export function ExperimentDetail() {
                             CV: {rawData.stats.cv_pct.toFixed(1)}%
                           </Badge>
                         )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Export CSV" onClick={downloadCsv}>
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Export PNG" onClick={downloadPng}>
+                          <Image className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="pt-4">
                     <PlateHeatmap
+                      ref={heatmapRef}
                       wells={rawData.wells}
                       stats={rawData.stats}
                       wavelength={rawData.metadata?.wavelength}
                     />
                     {rawData.stats && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+                      <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrime !== null ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
                         {[
                           { label: "Mean", value: rawData.stats.mean },
                           { label: "Std Dev", value: rawData.stats.sd },
@@ -253,6 +308,17 @@ export function ExperimentDetail() {
                             <div className="text-base font-mono font-medium text-primary">{value ?? "–"}</div>
                           </div>
                         ))}
+                        {zPrime !== null && (
+                          <div className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
+                            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-bold">Z′-Factor</div>
+                            <div className={`text-base font-mono font-medium ${
+                              zPrime >= 0.5 ? "text-emerald-500" : zPrime >= 0 ? "text-yellow-500" : "text-destructive"
+                            }`}>
+                              {zPrime.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">≥0.5 excellent</div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>

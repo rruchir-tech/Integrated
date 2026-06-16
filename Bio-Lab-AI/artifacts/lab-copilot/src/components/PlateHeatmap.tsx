@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 
 interface WellData {
   well: string;
@@ -55,7 +55,7 @@ function interpolateColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export function PlateHeatmap({ wells, stats, wavelength, compact = false }: PlateHeatmapProps) {
+export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false }, ref) {
   const [tooltip, setTooltip] = useState<{
     well: string;
     value: number | null;
@@ -96,7 +96,7 @@ export function PlateHeatmap({ wells, stats, wavelength, compact = false }: Plat
   const labelSize = compact ? "text-[9px]" : "text-[10px]";
 
   return (
-    <div className="select-none">
+    <div ref={ref} className="select-none">
       <div className="overflow-x-auto">
         <div className="inline-block">
           <div className="flex items-center gap-0.5 mb-1 ml-6">
@@ -216,4 +216,4 @@ export function PlateHeatmap({ wells, stats, wavelength, compact = false }: Plat
       </div>
     </div>
   );
-}
+});

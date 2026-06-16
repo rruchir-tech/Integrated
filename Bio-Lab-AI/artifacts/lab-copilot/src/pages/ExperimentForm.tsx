@@ -96,6 +96,7 @@ export function ExperimentForm() {
   const [synergyLoading, setSynergyLoading] = useState(false);
   const [synergyResult, setSynergyResult] = useState<SynergyParseResult | null>(null);
   const [synergyFileB64, setSynergyFileB64] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { data: templates } = useQuery<Template[]>({
     queryKey: ["templates"],
@@ -438,9 +439,27 @@ export function ExperimentForm() {
                   </CardHeader>
                   <CardContent>
                     {!synergyFile ? (
-                      <label className="block border-2 border-dashed border-primary/30 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors">
-                        <UploadCloud className="h-10 w-10 text-primary mb-3" />
-                        <div className="text-sm font-medium text-foreground mb-1">Drop Synergy H1 Excel file here</div>
+                      <label
+                        className={`block border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                          isDragging
+                            ? "border-primary bg-primary/10 scale-[1.01]"
+                            : "border-primary/30 hover:border-primary/60 hover:bg-primary/5"
+                        }`}
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsDragging(false);
+                          const f = e.dataTransfer.files[0];
+                          if (f) handleSynergyFile(f);
+                        }}
+                      >
+                        <UploadCloud className={`h-10 w-10 text-primary mb-3 transition-transform ${isDragging ? "scale-125" : ""}`} />
+                        <div className="text-sm font-medium text-foreground mb-1">
+                          {isDragging ? "Release to upload" : "Drop Synergy H1 Excel file here"}
+                        </div>
                         <div className="text-xs text-muted-foreground mb-4">.xlsx or .xls — Gen5 plate reader export</div>
                         <input
                           type="file"

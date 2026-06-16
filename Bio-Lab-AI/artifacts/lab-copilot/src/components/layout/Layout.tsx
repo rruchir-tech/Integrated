@@ -89,9 +89,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Badge variant="outline" className="text-[10px] uppercase tracking-widest flex-shrink-0">Pro</Badge>
                 </div>
                 <div className="text-xs text-sidebar-foreground/60">
-                  {experiments?.length ? `${experiments.length} experiments tracked` : "No experiments yet"}
+                  {Array.isArray(experiments) && experiments.length ? `${experiments.length} experiments tracked` : "No experiments yet"}
                 </div>
-                <Progress value={Math.min(100, (experiments?.length ?? 0) * 10)} className="h-1.5" />
+                <Progress value={Math.min(100, (Array.isArray(experiments) ? experiments.length : 0) * 10)} className="h-1.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
@@ -120,7 +120,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="px-3 flex flex-col gap-1">
             {[
               { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, shortcut: "G D", active: location === "/dashboard" || location === "/", count: null },
-              { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: experiments?.length ?? null },
+              { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null },
               { href: "/experiments/compare", label: "Compare", icon: <GitCompare className="h-4 w-4" />, shortcut: "G C", active: location === "/experiments/compare", count: null },
               { href: "/data-analysis", label: "Data Analysis", icon: <BarChart3 className="h-4 w-4" />, shortcut: "G A", active: location === "/data-analysis", count: null },
               { href: "/templates", label: "Templates", icon: <BookTemplate className="h-4 w-4" />, shortcut: "G T", active: location === "/templates", count: null },
@@ -179,7 +179,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <ScrollArea className="flex-1 -mx-3">
               <div className="px-3 flex flex-col gap-1">
-                {experiments?.slice(0, 10).map((exp, index) => (
+                {Array.isArray(experiments) && experiments.slice(0, 10).map((exp, index) => (
                   <motion.div
                     key={exp.id}
                     initial={{ opacity: 0, x: -8 }}
