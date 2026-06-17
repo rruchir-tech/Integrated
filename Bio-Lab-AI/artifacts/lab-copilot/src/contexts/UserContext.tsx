@@ -12,7 +12,7 @@ import { createContext, useContext } from "react";
 const APPROVED_ADMIN_EMAILS = new Set(
   (import.meta.env.VITE_ADMIN_EMAIL ?? "")
     .split(",")
-    .map((e) => e.trim().toLowerCase())
+    .map((e: string) => e.trim().toLowerCase())
     .filter(Boolean),
 );
 
