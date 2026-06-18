@@ -228,6 +228,10 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       config: {
         systemInstruction,
         maxOutputTokens: 8192,
+        // gemini-2.5-flash spends "thinking" tokens from the output budget; without
+        // this it can burn the whole budget thinking and stream ZERO text, leaving
+        // the user with their message and no reply. Disable thinking for chat.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -239,11 +243,19 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       }
     }
 
-    await db
-      .insert(messages)
-      .values({ conversationId: convId, role: "assistant", content: fullResponse });
-
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    if (fullResponse.trim()) {
+      await db
+        .insert(messages)
+        .values({ conversationId: convId, role: "assistant", content: fullResponse });
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } else {
+      // Don't persist an empty assistant bubble — surface a retryable error instead.
+      res.write(
+        `data: ${JSON.stringify({
+          error: "The AI returned an empty response (it may be rate-limited). Please try again.",
+        })}\n\n`,
+      );
+    }
     res.end();
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
@@ -280,23 +292,35 @@ router.post("/gemini/general-chat", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    let fullResponse = "";
     const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: message }] }],
       config: {
         systemInstruction,
         maxOutputTokens: 4096,
+        // See chat route: disable thinking so 2.5-flash doesn't stream an empty reply.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
     for await (const chunk of stream) {
       const text = chunk.text;
       if (text) {
+        fullResponse += text;
         res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
       }
     }
 
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    if (fullResponse.trim()) {
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } else {
+      res.write(
+        `data: ${JSON.stringify({
+          error: "The AI returned an empty response (it may be rate-limited). Please try again.",
+        })}\n\n`,
+      );
+    }
     res.end();
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
