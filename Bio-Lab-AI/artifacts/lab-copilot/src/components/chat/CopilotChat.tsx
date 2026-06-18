@@ -17,6 +17,7 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [assistantBuffer, setAssistantBuffer] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -48,6 +49,7 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
     setInput("");
     setIsStreaming(true);
     setAssistantBuffer("");
+    setChatError(null);
 
     const tempUserMsg = {
       id: Date.now(),
@@ -91,6 +93,9 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
               if (data.content) {
                 setAssistantBuffer(prev => prev + data.content);
               }
+              if (data.error) {
+                setChatError(data.error);
+              }
               if (data.done) {
                 queryClient.invalidateQueries({ queryKey: getListGeminiMessagesQueryKey(conversationId) });
               }
@@ -102,6 +107,7 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      setChatError("Couldn't reach the AI. Check your connection and try again.");
     } finally {
       setIsStreaming(false);
       setAssistantBuffer("");
@@ -170,6 +176,17 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
                   </ReactMarkdown>
                 </div>
                 <span className="inline-block w-1.5 h-4 ml-1 bg-primary animate-pulse align-middle" />
+              </div>
+            </div>
+          )}
+
+          {chatError && !isStreaming && (
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-destructive/15 flex items-center justify-center">
+                <Bot className="h-4 w-4 text-destructive" />
+              </div>
+              <div className="rounded-lg px-4 py-2 max-w-[80%] bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                {chatError}
               </div>
             </div>
           )}
