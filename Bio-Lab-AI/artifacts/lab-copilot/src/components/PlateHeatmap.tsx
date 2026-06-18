@@ -24,6 +24,10 @@ interface PlateHeatmapProps {
   stats: PlateStats;
   wavelength?: string | null;
   compact?: boolean;
+  /** When set, wells are colored binary pass/fail against this cutoff instead of the gradient. */
+  passThreshold?: number | null;
+  /** "above" = pass when value >= cutoff; "below" = pass when value <= cutoff. */
+  passDirection?: "above" | "below";
 }
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
@@ -55,7 +59,7 @@ function interpolateColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false }, ref) {
+export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false, passThreshold = null, passDirection = "above" }, ref) {
   const [tooltip, setTooltip] = useState<{
     well: string;
     value: number | null;
@@ -75,12 +79,24 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
     return Math.max(0, Math.min(1, (value - min) / range));
   };
 
+  const thresholdActive = passThreshold !== null && passThreshold !== undefined && !Number.isNaN(passThreshold);
+  const isPass = (value: number) =>
+    passDirection === "below" ? value <= (passThreshold as number) : value >= (passThreshold as number);
+
   const getWellStyle = (w: WellData): React.CSSProperties => {
     if (w.value === null || w.status === "blank") {
       return {
         backgroundColor: "hsl(var(--muted))",
         opacity: 0.4,
         border: "1px solid hsl(var(--border))",
+      };
+    }
+    if (thresholdActive) {
+      const pass = isPass(w.value);
+      return {
+        backgroundColor: pass ? "rgb(34,197,94)" : "rgb(239,68,68)",
+        border: "1px solid transparent",
+        opacity: pass ? 1 : 0.9,
       };
     }
     const t = getNorm(w.value);
@@ -180,26 +196,45 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
                 ? "⚠ Low outlier"
                 : "OK"}
             </div>
+            {thresholdActive && tooltip.value !== null && tooltip.status !== "blank" && (
+              <div className={isPass(tooltip.value) ? "text-emerald-500" : "text-destructive"}>
+                {isPass(tooltip.value) ? "✓ Pass" : "✗ Fail"} ({passDirection === "below" ? "≤" : "≥"} {passThreshold})
+              </div>
+            )}
           </div>
         </div>
       )}
 
       <div className="mt-3 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className="flex gap-0.5">
-            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-              <div
-                key={t}
-                className="w-4 h-3 rounded-sm"
-                style={{ backgroundColor: interpolateColor(t) }}
-              />
-            ))}
+        {thresholdActive ? (
+          <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgb(34,197,94)" }} /> Pass
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgb(239,68,68)" }} /> Fail
+            </span>
+            <span className="font-mono">
+              cutoff {passDirection === "below" ? "≤" : "≥"} {passThreshold}
+            </span>
           </div>
-          <span className="font-mono">
-            {min?.toFixed(3)} – {max?.toFixed(3)}
-          </span>
-          {wavelength && <span>nm: {wavelength}</span>}
-        </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="flex gap-0.5">
+              {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                <div
+                  key={t}
+                  className="w-4 h-3 rounded-sm"
+                  style={{ backgroundColor: interpolateColor(t) }}
+                />
+              ))}
+            </div>
+            <span className="font-mono">
+              {min?.toFixed(3)} – {max?.toFixed(3)}
+            </span>
+            {wavelength && <span>nm: {wavelength}</span>}
+          </div>
+        )}
 
         <div className="flex gap-3 text-xs font-mono text-muted-foreground ml-auto">
           {stats.mean !== null && <span>Mean: {stats.mean}</span>}

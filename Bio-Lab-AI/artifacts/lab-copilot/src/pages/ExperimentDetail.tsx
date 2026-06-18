@@ -7,6 +7,7 @@ import {
   useUpdateExperiment,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -40,6 +41,11 @@ export function ExperimentDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>("suggestions");
+  // Pass/fail threshold — user-defined cutoff that flags wells in the heatmap.
+  // Persisted per-experiment in localStorage (client-side; no schema change).
+  const [passThreshold, setPassThreshold] = useState<number | null>(null);
+  const [passDirection, setPassDirection] = useState<"above" | "below">("above");
+  const skipPersistRef = useRef(true);
 
   const { data: experiment, isLoading } = useGetExperiment(expId, {
     query: { enabled: !!expId, queryKey: getGetExperimentQueryKey(expId) }
@@ -83,6 +89,33 @@ export function ExperimentDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [experiment, expId]);
+
+  // Load this experiment's saved pass/fail threshold.
+  useEffect(() => {
+    skipPersistRef.current = true;
+    let t: number | null = null;
+    let d: "above" | "below" = "above";
+    try {
+      const raw = expId ? localStorage.getItem(`passfail:${expId}`) : null;
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.threshold === "number") t = s.threshold;
+        if (s.direction === "below") d = "below";
+      }
+    } catch { /* ignore */ }
+    setPassThreshold(t);
+    setPassDirection(d);
+  }, [expId]);
+
+  // Persist on user change (skip the write caused by the load above).
+  useEffect(() => {
+    if (skipPersistRef.current) { skipPersistRef.current = false; return; }
+    if (!expId) return;
+    try {
+      if (passThreshold === null) localStorage.removeItem(`passfail:${expId}`);
+      else localStorage.setItem(`passfail:${expId}`, JSON.stringify({ threshold: passThreshold, direction: passDirection }));
+    } catch { /* ignore */ }
+  }, [expId, passThreshold, passDirection]);
 
   const downloadCsv = () => {
     if (!experiment || !rawData?.wells) return;
@@ -149,6 +182,18 @@ export function ExperimentDetail() {
     const m = experiment.ai_summary.match(/Z['′']?[-\s]*(?:factor|prime)?[:\s=]+([0-9]*\.?[0-9]+)/i);
     return m ? parseFloat(m[1]) : null;
   })();
+
+  // Wells that carry a real reading (exclude blanks/empties) — the pass/fail denominator.
+  const scorableWells: { value: number | null; status: string }[] =
+    isPlate96 && Array.isArray(rawData?.wells)
+      ? rawData.wells.filter((w: { value: number | null; status: string }) => w.value !== null && w.status !== "blank")
+      : [];
+  const thresholdActive = passThreshold !== null && !Number.isNaN(passThreshold);
+  const passCount = thresholdActive
+    ? scorableWells.filter((w) =>
+        passDirection === "below" ? (w.value as number) <= passThreshold! : (w.value as number) >= passThreshold!,
+      ).length
+    : 0;
   const suggestions: {
     title: string;
     variable_to_change: string;
@@ -289,11 +334,55 @@ export function ExperimentDetail() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-4">
+                    {/* Pass/fail threshold control */}
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Pass / fail</span>
+                      <div className="inline-flex rounded-md border border-border overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setPassDirection("above")}
+                          className={`px-2 py-1 text-xs font-mono transition-colors ${passDirection === "above" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                        >
+                          ≥ pass
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPassDirection("below")}
+                          className={`px-2 py-1 text-xs font-mono transition-colors ${passDirection === "below" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                        >
+                          ≤ pass
+                        </button>
+                      </div>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="cutoff value"
+                        value={passThreshold ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPassThreshold(v === "" ? null : Number(v));
+                        }}
+                        className="h-8 w-32 font-mono text-sm"
+                      />
+                      {thresholdActive && (
+                        <>
+                          <span className="text-xs font-mono px-2 py-1 rounded-md bg-muted">
+                            <span className="text-emerald-500 font-semibold">{passCount}</span>
+                            <span className="text-muted-foreground"> / {scorableWells.length} pass</span>
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setPassThreshold(null)}>
+                            Clear
+                          </Button>
+                        </>
+                      )}
+                    </div>
                     <PlateHeatmap
                       ref={heatmapRef}
                       wells={rawData.wells}
                       stats={rawData.stats}
                       wavelength={rawData.metadata?.wavelength}
+                      passThreshold={passThreshold}
+                      passDirection={passDirection}
                     />
                     {rawData.stats && (
                       <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrime !== null ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
