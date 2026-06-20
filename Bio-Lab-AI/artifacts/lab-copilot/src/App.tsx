@@ -16,6 +16,8 @@ import { AdminPage } from "@/pages/AdminPage";
 import { LandingPage } from "@/pages/LandingPage";
 import { TemplatesPage } from "@/pages/TemplatesPage";
 import { TasksPage } from "@/pages/TasksPage";
+import { ProjectsPage } from "@/pages/ProjectsPage";
+import { ProjectDetail } from "@/pages/ProjectDetail";
 import { motion, AnimatePresence } from "framer-motion";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useEffect, useRef, useState } from "react";
@@ -129,6 +131,12 @@ function AppRoutes({ isAdmin }: { isAdmin: boolean }) {
         </Route>
         <Route path="/experiments">
           <Layout><AnimatedRoute><ExperimentList /></AnimatedRoute></Layout>
+        </Route>
+        <Route path="/projects/:id">
+          <Layout><AnimatedRoute><ProjectDetail /></AnimatedRoute></Layout>
+        </Route>
+        <Route path="/projects">
+          <Layout><AnimatedRoute><ProjectsPage /></AnimatedRoute></Layout>
         </Route>
         <Route path="/data-analysis">
           <Layout><AnimatedRoute><DataAnalysisPage /></AnimatedRoute></Layout>
@@ -284,6 +292,14 @@ function ClerkAppRoutes() {
         </Route>
         <Route path="/experiments">
           <Show when="signed-in"><Layout><AnimatedRoute><ExperimentList /></AnimatedRoute></Layout></Show>
+          <Show when="signed-out"><Redirect to="/" /></Show>
+        </Route>
+        <Route path="/projects/:id">
+          <Show when="signed-in"><Layout><AnimatedRoute><ProjectDetail /></AnimatedRoute></Layout></Show>
+          <Show when="signed-out"><Redirect to="/" /></Show>
+        </Route>
+        <Route path="/projects">
+          <Show when="signed-in"><Layout><AnimatedRoute><ProjectsPage /></AnimatedRoute></Layout></Show>
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/data-analysis">

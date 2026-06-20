@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Beaker, Plus, Zap, Sun, Moon, GitCompare, Sparkles, LogOut, User, BarChart3, BookTemplate, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Beaker, Plus, Zap, Sun, Moon, GitCompare, Sparkles, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,6 +121,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {[
               { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, shortcut: "G D", active: location === "/dashboard" || location === "/", count: null },
               { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null },
+              { href: "/projects", label: "Projects", icon: <FolderKanban className="h-4 w-4" />, shortcut: "G P", active: location.startsWith("/projects"), count: null },
               { href: "/experiments/compare", label: "Compare", icon: <GitCompare className="h-4 w-4" />, shortcut: "G C", active: location === "/experiments/compare", count: null },
               { href: "/data-analysis", label: "Data Analysis", icon: <BarChart3 className="h-4 w-4" />, shortcut: "G A", active: location === "/data-analysis", count: null },
               { href: "/templates", label: "Templates", icon: <BookTemplate className="h-4 w-4" />, shortcut: "G T", active: location === "/templates", count: null },
