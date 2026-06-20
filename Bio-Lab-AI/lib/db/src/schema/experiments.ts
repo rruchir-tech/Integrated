@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 import { conversations } from "./conversations";
+import { projects } from "./projects";
 
 export const experiments = pgTable("experiments", {
   id: serial("id").primaryKey(),
@@ -18,6 +19,9 @@ export const experiments = pgTable("experiments", {
   ai_summary: text("ai_summary"),
   ai_next_experiments_json: text("ai_next_experiments_json"),
   conversation_id: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+  // Optional grouping into a Project (nullable = ungrouped). ON DELETE SET NULL so
+  // deleting a project never deletes its experiments.
+  project_id: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
