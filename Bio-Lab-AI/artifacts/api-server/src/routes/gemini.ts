@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
-import { db, conversations, messages, experiments } from "@workspace/db";
+import { db, conversations, messages, experiments, projects } from "@workspace/db";
 import {
   CreateGeminiConversationBody,
   SendGeminiMessageBody,
@@ -17,6 +17,11 @@ Always reference specific experiments by name when answering. Be specific, actio
 
 const GENERAL_SYSTEM_PROMPT = `You are an expert biotech and cell biology advisor.
 Answer general scientific questions, explain concepts, help with protocol design, and discuss biotech topics. Be concise and scientific.`;
+
+const PROJECT_SYSTEM_PROMPT = `You are an expert cell biologist and research strategist acting as the copilot for an entire research PROJECT.
+You are given the project's goal and every experiment logged under it. Reason across the whole project, not one plate:
+connect findings between experiments, flag patterns, contradictions, and gaps, and recommend concrete next experiments
+that advance the project's goal. Always reference specific experiments by name. Be specific, quantitative, and actionable.`;
 
 type ConversationRow = typeof conversations.$inferSelect;
 type ExperimentRow = typeof experiments.$inferSelect;
@@ -250,6 +255,130 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     } else {
       // Don't persist an empty assistant bubble — surface a retryable error instead.
+      res.write(
+        `data: ${JSON.stringify({
+          error: "The AI returned an empty response (it may be rate-limited). Please try again.",
+        })}\n\n`,
+      );
+    }
+    res.end();
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
+    res.end();
+  }
+});
+
+// ── Project copilot (Phase 2) ─────────────────────────────────────────────────
+// A chat scoped to one Project: grounded in the project's goal + ONLY that
+// project's experiments. The project's conversation is created lazily on first
+// message (projects.conversation_id).
+
+router.get("/projects/:id/messages", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const projectId = parseInt(req.params.id, 10);
+    const proj = await db
+      .select({ user_id: projects.user_id, conversation_id: projects.conversation_id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!proj[0] || proj[0].user_id !== userId) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    if (!proj[0].conversation_id) {
+      res.json([]);
+      return;
+    }
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, proj[0].conversation_id))
+      .orderBy(messages.createdAt);
+    res.json(msgs);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/projects/:id/chat", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const projectId = parseInt(req.params.id, 10);
+    const { content } = (req.body ?? {}) as { content?: unknown };
+    if (typeof content !== "string" || !content.trim()) {
+      res.status(400).json({ error: "content is required" });
+      return;
+    }
+
+    const projRows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    const proj = projRows[0];
+    if (!proj || proj.user_id !== userId) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    // Ensure the project has a conversation (created lazily on first message).
+    let convId = proj.conversation_id;
+    if (!convId) {
+      const inserted = await db
+        .insert(conversations)
+        .values({ title: `Project: ${proj.name}`, user_id: userId })
+        .returning();
+      convId = inserted[0]!.id;
+      await db.update(projects).set({ conversation_id: convId, updated_at: new Date() }).where(eq(projects.id, projectId));
+    }
+
+    await db.insert(messages).values({ conversationId: convId, role: "user", content });
+
+    // Ground the AI in the project's goal + every experiment in THIS project.
+    const projExperiments = await db
+      .select()
+      .from(experiments)
+      .where(and(eq(experiments.project_id, projectId), eq(experiments.user_id, userId)))
+      .orderBy(desc(experiments.date));
+
+    const chatHistory = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, convId))
+      .orderBy(messages.createdAt);
+
+    const systemInstruction =
+      `${PROJECT_SYSTEM_PROMPT}\n\nPROJECT: ${proj.name}\nGOAL: ${proj.goal ?? "(not specified)"}\n\n` +
+      `EXPERIMENTS IN THIS PROJECT:\n${projExperiments.length ? buildLabHistory(projExperiments) : "(none logged yet)"}\n\n` +
+      `SCIENTIST QUESTION: ${content}`;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    let fullResponse = "";
+    const stream = await generateContentStreamWithRetry({
+      model: "gemini-2.5-flash",
+      contents: chatHistory.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+      config: {
+        systemInstruction,
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.text;
+      if (text) {
+        fullResponse += text;
+        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      }
+    }
+
+    if (fullResponse.trim()) {
+      await db.insert(messages).values({ conversationId: convId, role: "assistant", content: fullResponse });
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } else {
       res.write(
         `data: ${JSON.stringify({
           error: "The AI returned an empty response (it may be rate-limited). Please try again.",
