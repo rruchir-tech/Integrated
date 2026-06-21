@@ -22,6 +22,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { ProjectChat } from "@/components/chat/ProjectChat";
 
 interface ExperimentRef {
   id: number;
@@ -215,6 +216,11 @@ export function ProjectDetail() {
           ))}
         </div>
       )}
+
+      {/* Project copilot */}
+      <div className="pt-2">
+        <ProjectChat projectId={project.id} />
+      </div>
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
