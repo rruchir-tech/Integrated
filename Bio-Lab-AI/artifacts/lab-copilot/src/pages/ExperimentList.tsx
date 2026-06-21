@@ -187,7 +187,7 @@ export function ExperimentList() {
               </div>
               <h3 className="text-lg font-semibold">No experiments yet</h3>
               <p className="text-muted-foreground text-sm max-w-sm mt-1">
-                Upload a plate reader export or instrument file — Lab Copilot parses, analyzes, and tracks it for you.
+                Upload a plate reader export or instrument file — Bioalyzer parses, analyzes, and tracks it for you.
               </p>
               <Link href="/experiments/new">
                 <Button size="sm" className="mt-4">

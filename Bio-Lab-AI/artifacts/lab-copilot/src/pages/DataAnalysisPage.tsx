@@ -424,17 +424,17 @@ export function DataAnalysisPage() {
                         {isStreaming ? (
                           <>
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            Generating…
+                            Bioalyzing…
                           </>
                         ) : hasReport ? (
                           <>
                             <RotateCcw className="h-3.5 w-3.5" />
-                            Regenerate Analysis
+                            Re-Bioalyze
                           </>
                         ) : (
                           <>
                             <BrainCircuit className="h-3.5 w-3.5" />
-                            Generate AI Analysis
+                            Bioalyze this plate
                           </>
                         )}
                       </Button>
@@ -455,7 +455,7 @@ export function DataAnalysisPage() {
                       <p className="text-sm">
                       {!hasPlateSummary
                           ? "No graphable experiment data is available yet. Please upload a Synergy H1 / Gen5 CSV so the AI can make graphs and analyze the experiment."
-                          : "Click \"Generate AI Analysis\" to produce graphs and a structured report from your plate data."}
+                          : "Click \"Bioalyze this plate\" to produce graphs and a structured report from your plate data."}
                       </p>
                     </div>
                   )}

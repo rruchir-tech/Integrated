@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Beaker, Plus, Zap, Sun, Moon, GitCompare, Sparkles, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
+import { LayoutDashboard, Beaker, Plus, Atom, Sun, Moon, GitCompare, Sparkles, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -61,7 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="absolute inset-0 pointer-events-none opacity-20" style={{ background: "linear-gradient(180deg, transparent, rgba(0,245,255,0.05))" }}></div>
         <div className="h-14 flex items-center px-4 font-semibold text-lg border-b border-sidebar-border gap-2 relative z-10">
           <div className="relative flex items-center justify-center">
-            <Zap className="h-5 w-5 text-sidebar-primary" />
+            <Atom className="h-5 w-5 text-sidebar-primary" />
             <motion.div 
               className="absolute w-1.5 h-1.5 bg-sidebar-primary rounded-full shadow-[0_0_8px_rgba(0,245,255,1)]"
               style={{ bottom: -2, right: -2 }}
@@ -69,7 +69,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               transition={{ repeat: Infinity, duration: 2 }}
             />
           </div>
-          <span className="tracking-wide">Lab Copilot</span>
+          <span className="tracking-wide">Bioalyzer</span>
         </div>
 
         <div className="px-4 pt-4 pb-2 relative z-10">

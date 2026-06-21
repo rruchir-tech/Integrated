@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Zap, Beaker, Brain, BarChart3, ArrowRight, Shield, Sparkles, CheckCircle2 } from "lucide-react";
+import { Atom, Beaker, Brain, BarChart3, ArrowRight, Shield, Sparkles, CheckCircle2 } from "lucide-react";
 
 const features = [
   {
@@ -44,7 +44,7 @@ export function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="relative">
-              <Zap className="h-5 w-5 text-primary" />
+              <Atom className="h-5 w-5 text-primary" />
               <motion.div
                 className="absolute w-1.5 h-1.5 bg-primary rounded-full"
                 style={{ bottom: -2, right: -2 }}
@@ -52,7 +52,7 @@ export function LandingPage() {
                 transition={{ repeat: Infinity, duration: 2 }}
               />
             </div>
-            <span className="font-semibold text-base tracking-wide">Lab Copilot</span>
+            <span className="font-semibold text-base tracking-wide">Bioalyzer</span>
           </div>
           <div className="flex items-center gap-3">
             <Link
@@ -158,8 +158,8 @@ export function LandingPage() {
       <footer className="border-t border-border/60 py-6 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row gap-2 items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Zap className="h-3.5 w-3.5 text-primary" />
-            <span>Lab Copilot</span>
+            <Atom className="h-3.5 w-3.5 text-primary" />
+            <span>Bioalyzer</span>
           </div>
           <span>Built for scientists, powered by AI</span>
         </div>

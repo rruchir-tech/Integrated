@@ -285,7 +285,7 @@ export function ExperimentDetail() {
               />
             )}
             <BrainCircuit className={`h-4 w-4 ${analyzeMutation.isPending ? "animate-pulse" : ""}`} />
-            {analyzeMutation.isPending ? "Analyzing…" : "Analyze with AI"}
+            {analyzeMutation.isPending ? "Bioalyzing…" : "Bioalyze"}
           </MotionButton>
         </div>
       </div>
@@ -519,7 +519,7 @@ export function ExperimentDetail() {
                 <CardContent className="flex flex-col items-center justify-center p-8 text-center h-48">
                   <BrainCircuit className="h-12 w-12 text-primary/50 mb-4" />
                   <p className="text-muted-foreground font-medium font-mono">No active conversation</p>
-                  <p className="text-sm text-muted-foreground mt-1">Click "Analyze with AI" to start the copilot chat.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Click "Bioalyze" to start the copilot chat.</p>
                 </CardContent>
               </Card>
             )}
@@ -571,7 +571,7 @@ export function ExperimentDetail() {
                   <CardContent className="pt-4">
                     {suggestions.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground text-sm font-mono">
-                        Click "Analyze with AI" to get AI-driven suggestions for your next experiment.
+                        Click "Bioalyze" to get AI-driven suggestions for your next experiment.
                       </div>
                     ) : (
                       <RecommendationActions experimentId={expId} suggestions={suggestions} />

@@ -24,7 +24,7 @@ const steps = [
     color: "text-cyan-400",
     bg: "bg-cyan-400/10",
     title: "Upload your first data file",
-    body: "Drag in a plate reader export, qPCR file, NanoDrop CSV — any instrument output. Lab Copilot parses it automatically.",
+    body: "Drag in a plate reader export, qPCR file, NanoDrop CSV — any instrument output. Bioalyzer parses it automatically.",
   },
   {
     icon: BrainCircuit,
@@ -78,7 +78,7 @@ function OnboardingEmptyState() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          Lab Copilot remembers every experiment, quantifies your data across instruments,
+          Bioalyzer remembers every experiment, quantifies your data across instruments,
           and tells you what to run next — so you spend less time in spreadsheets and more time discovering.
         </motion.p>
       </div>
