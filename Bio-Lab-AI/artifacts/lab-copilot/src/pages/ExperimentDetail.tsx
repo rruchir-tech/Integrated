@@ -119,6 +119,8 @@ export function ExperimentDetail() {
 
   const downloadCsv = () => {
     if (!experiment || !rawData?.wells) return;
+    const t = passThreshold;
+    const active = t !== null && !Number.isNaN(t);
     const meta = [
       `# Experiment: ${experiment.name}`,
       `# Date: ${experiment.date}`,
@@ -126,14 +128,22 @@ export function ExperimentDetail() {
       `# Instrument: ${experiment.instrument}`,
       `# Wavelength: ${rawData.metadata?.wavelength ?? "–"} nm`,
       `# Protocol: ${rawData.metadata?.protocol ?? "–"}`,
+      ...(active ? [`# Pass/fail cutoff: value ${passDirection === "below" ? "≤" : "≥"} ${t}`] : []),
       "#",
-      "Well,Row,Col,Value,Status,CV_pct",
+      active ? "Well,Row,Col,Value,Status,CV_pct,PassFail" : "Well,Row,Col,Value,Status,CV_pct",
     ].join("\n");
     const rows = [...rawData.wells]
       .sort((a: { well: string }, b: { well: string }) => a.well.localeCompare(b.well))
-      .map((w: { well: string; row: string; col: number; value: number | null; status: string; cv_pct: number | null }) =>
-        `${w.well},${w.row},${w.col},${w.value ?? ""},${w.status},${w.cv_pct ?? ""}`
-      )
+      .map((w: { well: string; row: string; col: number; value: number | null; status: string; cv_pct: number | null }) => {
+        const base = `${w.well},${w.row},${w.col},${w.value ?? ""},${w.status},${w.cv_pct ?? ""}`;
+        if (!active) return base;
+        let pf = "";
+        if (w.value !== null && w.status !== "blank") {
+          const pass = passDirection === "below" ? w.value <= (t as number) : w.value >= (t as number);
+          pf = pass ? "PASS" : "FAIL";
+        }
+        return `${base},${pf}`;
+      })
       .join("\n");
     const blob = new Blob([`${meta}\n${rows}`], { type: "text/csv" });
     const a = document.createElement("a");
@@ -364,6 +374,20 @@ export function ExperimentDetail() {
                         }}
                         className="h-8 w-32 font-mono text-sm"
                       />
+                      {rawData.stats?.mean != null && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs font-mono"
+                          title="Set the cutoff to the plate mean"
+                          onClick={() => {
+                            const m = rawData.stats?.mean;
+                            if (m != null) setPassThreshold(Number(m.toFixed(3)));
+                          }}
+                        >
+                          use mean
+                        </Button>
+                      )}
                       {thresholdActive && (
                         <>
                           <span className="text-xs font-mono px-2 py-1 rounded-md bg-muted">
