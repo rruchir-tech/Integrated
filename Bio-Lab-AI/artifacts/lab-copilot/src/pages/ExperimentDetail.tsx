@@ -156,7 +156,13 @@ export function ExperimentDetail() {
   const downloadPng = async () => {
     if (!heatmapRef.current || !experiment) return;
     try {
-      const dataUrl = await toPng(heatmapRef.current, { backgroundColor: "#0c1520", pixelRatio: 2 });
+      // Match the current theme so the well labels stay readable in the export
+      // (dark labels on a dark bg, or vice-versa, would be invisible on slides).
+      const isDark = document.documentElement.classList.contains("dark");
+      const dataUrl = await toPng(heatmapRef.current, {
+        backgroundColor: isDark ? "#0c1520" : "#ffffff",
+        pixelRatio: 2,
+      });
       const a = document.createElement("a");
       a.download = `${experiment.name.replace(/\s+/g, "_")}_heatmap.png`;
       a.href = dataUrl;
@@ -204,6 +210,11 @@ export function ExperimentDetail() {
         passDirection === "below" ? (w.value as number) <= passThreshold! : (w.value as number) >= passThreshold!,
       ).length
     : 0;
+  // Standard error of the mean across scorable wells (SD / √n) — precision of the plate mean.
+  const sem: number | null =
+    rawData?.stats?.sd != null && scorableWells.length > 0
+      ? rawData.stats.sd / Math.sqrt(scorableWells.length)
+      : null;
   const suggestions: {
     title: string;
     variable_to_change: string;
@@ -409,10 +420,11 @@ export function ExperimentDetail() {
                       passDirection={passDirection}
                     />
                     {rawData.stats && (
-                      <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrime !== null ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
+                      <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrime !== null ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-3 lg:grid-cols-5"}`}>
                         {[
                           { label: "Mean", value: rawData.stats.mean },
                           { label: "Std Dev", value: rawData.stats.sd },
+                          { label: "SEM", value: sem != null ? Number(sem.toFixed(3)) : null },
                           { label: "Min", value: rawData.stats.min },
                           { label: "Max", value: rawData.stats.max },
                         ].map(({ label, value }) => (
