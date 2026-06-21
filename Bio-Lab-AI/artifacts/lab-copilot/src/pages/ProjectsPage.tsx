@@ -127,7 +127,7 @@ export function ProjectsPage() {
                 transition={{ delay: idx * 0.05 }}
               >
                 <Link href={`/projects/${p.id}`}>
-                  <Card className="h-full cursor-pointer hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] flex flex-col">
+                  <Card className="h-full cursor-pointer hover:border-l-2 hover:border-l-primary transition-all flex flex-col">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-base leading-tight">{p.name}</CardTitle>

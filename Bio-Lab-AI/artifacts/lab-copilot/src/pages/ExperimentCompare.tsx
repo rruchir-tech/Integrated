@@ -305,7 +305,7 @@ export function ExperimentCompare() {
                   <Button
                     onClick={() => runComparison()}
                     disabled={!canCompare}
-                    className="self-end dark:shadow-[0_0_12px_rgba(0,245,255,0.25)] gap-2 shrink-0"
+                    className="self-end gap-2 shrink-0"
                   >
                     <Send className="h-4 w-4" />
                     Compare
@@ -383,7 +383,7 @@ export function ExperimentCompare() {
                               size="sm"
                               onClick={() => runComparison()}
                               disabled={!question.trim()}
-                              className="gap-1.5 dark:shadow-[0_0_10px_rgba(0,245,255,0.2)]"
+                              className="gap-1.5"
                             >
                               <Send className="h-3.5 w-3.5" />
                               Ask

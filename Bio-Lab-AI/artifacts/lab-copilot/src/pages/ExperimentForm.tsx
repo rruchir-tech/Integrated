@@ -410,7 +410,7 @@ export function ExperimentForm() {
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
                   idx === step
-                    ? "border-primary bg-primary text-primary-foreground dark:shadow-[0_0_8px_rgba(0,245,255,0.6)]"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : idx < step
                     ? "border-primary/60 bg-primary/20 text-primary"
                     : "border-border bg-background text-muted-foreground"
@@ -740,7 +740,7 @@ export function ExperimentForm() {
 
                 <div className="flex justify-between pt-2">
                   <Button type="button" variant="outline" onClick={() => setStep(1)}>← Edit Details</Button>
-                  <Button type="submit" disabled={createMutation.isPending || synergyLoading} className="dark:shadow-[0_0_12px_rgba(0,245,255,0.3)]">
+                  <Button type="submit" disabled={createMutation.isPending || synergyLoading} className="">
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Experiment
                   </Button>

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Beaker, Plus, Atom, Sun, Moon, GitCompare, Sparkles, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
+import { LayoutDashboard, Beaker, Plus, Atom, Sun, Moon, GitCompare, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -58,17 +58,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <PanelGroup direction="horizontal" className="h-screen w-full bg-background overflow-hidden">
       <Panel defaultSize={18} minSize={12} maxSize={30} className="flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border relative">
-        <div className="absolute inset-0 pointer-events-none opacity-20" style={{ background: "linear-gradient(180deg, transparent, rgba(0,245,255,0.05))" }}></div>
         <div className="h-14 flex items-center px-4 font-semibold text-lg border-b border-sidebar-border gap-2 relative z-10">
-          <div className="relative flex items-center justify-center">
-            <Atom className="h-5 w-5 text-sidebar-primary" />
-            <motion.div 
-              className="absolute w-1.5 h-1.5 bg-sidebar-primary rounded-full shadow-[0_0_8px_rgba(0,245,255,1)]"
-              style={{ bottom: -2, right: -2 }}
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-            />
-          </div>
+          <Atom className="h-5 w-5 text-sidebar-primary" />
           <span className="tracking-wide">Bioalyzer</span>
         </div>
 
@@ -86,7 +77,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {email}
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-[10px] uppercase tracking-widest flex-shrink-0">Pro</Badge>
                 </div>
                 <div className="text-xs text-sidebar-foreground/60">
                   {Array.isArray(experiments) && experiments.length ? `${experiments.length} experiments tracked` : "No experiments yet"}
@@ -208,17 +198,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
         
-        <div className="p-4 border-t border-sidebar-border mt-auto relative z-10 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-sidebar-foreground/50 font-mono">v1.0.4</span>
-            <button
-              onClick={() => setSoundEnabled((v) => !v)}
-              className="p-2 rounded-full hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
-              aria-label="Toggle sound effects"
-            >
-              <Sparkles className={`h-4 w-4 ${soundEnabled ? "text-sidebar-primary" : ""}`} />
-            </button>
-          </div>
+        <div className="p-4 border-t border-sidebar-border mt-auto relative z-10 flex justify-end items-center">
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             className="p-2 rounded-full hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
@@ -235,7 +215,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </Panel>
       <PanelResizeHandle className="w-1 bg-sidebar-border hover:bg-primary/60 transition-colors cursor-col-resize relative group">
-        <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/20 dark:group-hover:shadow-[0_0_10px_rgba(0,245,255,0.5)] transition-all" />
+        <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/20 dark:group- transition-all" />
       </PanelResizeHandle>
       <Panel className="flex flex-col min-w-0 overflow-hidden bg-background">
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

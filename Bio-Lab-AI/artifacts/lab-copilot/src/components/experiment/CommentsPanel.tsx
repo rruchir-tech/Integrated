@@ -88,7 +88,7 @@ export function CommentsPanel({ experimentId }: CommentsPanelProps) {
   };
 
   return (
-    <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+    <Card className="hover:border-l-2 hover:border-l-primary transition-all">
       <CardHeader className="py-4 border-b">
         <CardTitle className="text-lg flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-primary" />

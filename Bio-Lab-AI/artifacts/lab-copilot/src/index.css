@@ -98,11 +98,11 @@
   --sidebar: 220 30% 12%;             /* keep sidebar dark even in light mode */
   --sidebar-foreground: 210 60% 92%;
   --sidebar-border: 220 28% 18%;
-  --sidebar-primary: 185 90% 55%;
+  --sidebar-primary: 188 60% 44%;
   --sidebar-primary-foreground: 220 30% 5%;
   --sidebar-accent: 220 28% 18%;
-  --sidebar-accent-foreground: 185 90% 65%;
-  --sidebar-ring: 185 90% 55%;
+  --sidebar-accent-foreground: 188 52% 54%;
+  --sidebar-ring: 188 60% 44%;
   --chart-1: 185 85% 35%;
   --chart-2: 142 60% 35%;
   --chart-3: 270 70% 55%;
@@ -142,23 +142,23 @@
   --card-foreground: 210 80% 92%;
   --card-border: 220 30% 14%;
   --border: 220 30% 14%;
-  --primary: 185 100% 50%;            /* electric cyan #00f5ff */
+  --primary: 188 58% 47%;            /* electric cyan #00f5ff */
   --primary-foreground: 220 30% 5%;
   --muted: 220 25% 12%;
   --muted-foreground: 210 40% 55%;
-  --accent: 185 100% 50%;
+  --accent: 188 58% 47%;
   --accent-foreground: 220 30% 5%;
-  --ring: 185 100% 50%;
+  --ring: 188 58% 47%;
   --input: 220 28% 12%;
   --sidebar: 220 35% 4%;              /* even darker sidebar */
   --sidebar-foreground: 210 70% 88%;
   --sidebar-border: 220 30% 10%;
-  --sidebar-primary: 185 100% 50%;
+  --sidebar-primary: 188 58% 47%;
   --sidebar-primary-foreground: 220 35% 4%;
   --sidebar-accent: 220 30% 9%;
-  --sidebar-accent-foreground: 185 100% 70%;
-  --sidebar-ring: 185 100% 50%;
-  --chart-1: 185 100% 50%;
+  --sidebar-accent-foreground: 188 50% 64%;
+  --sidebar-ring: 188 58% 47%;
+  --chart-1: 188 58% 47%;
   --chart-2: 142 80% 45%;
   --chart-3: 270 90% 65%;
   --chart-4: 38 100% 55%;
@@ -181,10 +181,5 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
-  }
-  .dark body {
-    background-image: linear-gradient(rgba(0,245,255,0.015) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(0,245,255,0.015) 1px, transparent 1px);
-    background-size: 32px 32px;
   }
 }

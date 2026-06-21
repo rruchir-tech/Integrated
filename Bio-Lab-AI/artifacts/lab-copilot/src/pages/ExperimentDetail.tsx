@@ -273,7 +273,7 @@ export function ExperimentDetail() {
           <MotionButton
             onClick={() => analyzeMutation.mutate({ id: expId, data: {} })}
             disabled={analyzeMutation.isPending}
-            className="gap-2 dark:shadow-[0_0_12px_rgba(0,245,255,0.3)] relative overflow-hidden"
+            className="gap-2 relative overflow-hidden"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >
@@ -296,7 +296,7 @@ export function ExperimentDetail() {
           <AnimatePresence>
             {experiment.notes && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
                   <CardHeader className="py-4">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <FileText className="h-5 w-5" />
@@ -312,7 +312,7 @@ export function ExperimentDetail() {
 
             {rawData && isPlate96 && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
                   <CardHeader className="py-4 border-b">
                     <div className="flex items-center justify-between">
                       <div>
@@ -453,7 +453,7 @@ export function ExperimentDetail() {
 
             {rawData && !isPlate96 && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
                   <CardHeader className="py-4 border-b">
                     <CardTitle className="text-lg">Uploaded Data Summary</CardTitle>
                     {experiment.file_name && (
@@ -488,7 +488,7 @@ export function ExperimentDetail() {
 
             {experiment.ai_summary && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-                <Card className="border-primary/30 bg-primary/5 dark:shadow-[0_0_15px_rgba(0,245,255,0.05)]">
+                <Card className="border-primary/30 bg-primary/5">
                   <CardHeader className="py-4 border-b border-primary/20">
                     <CardTitle className="text-lg flex items-center gap-2 text-primary">
                       <BrainCircuit className="h-5 w-5" />
@@ -561,7 +561,7 @@ export function ExperimentDetail() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
                   <CardHeader className="py-4 border-b">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <AlertTriangle className="h-5 w-5 text-primary" />

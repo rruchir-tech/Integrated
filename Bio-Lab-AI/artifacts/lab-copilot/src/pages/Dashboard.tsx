@@ -256,7 +256,7 @@ export function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.08, type: "spring", stiffness: 200, damping: 20 }}
           >
-            <Card className="hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all h-full">
+            <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
                 <stat.icon className={`h-4 w-4 ${stat.color}`} />
@@ -284,7 +284,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <Card className="h-full hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all overflow-hidden relative">
+          <Card className="h-full hover:border-l-2 hover:border-l-primary transition-all overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
             <CardHeader>
               <CardTitle>Experiments Over Time</CardTitle>
@@ -320,7 +320,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <Card className="h-full hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all overflow-hidden relative">
+          <Card className="h-full hover:border-l-2 hover:border-l-primary transition-all overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-transparent pointer-events-none" />
             <CardHeader>
               <CardTitle>Assay Types</CardTitle>
@@ -367,7 +367,7 @@ export function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Card className="hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all overflow-hidden">
+        <Card className="hover:border-l-2 hover:border-l-primary transition-all overflow-hidden">
           <CardHeader>
             <CardTitle>Recent Experiments</CardTitle>
           </CardHeader>
@@ -415,7 +415,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
         >
-          <Card className="hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all h-full">
+          <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
@@ -478,7 +478,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.65 }}
         >
-          <Card className="hover:border-l-2 hover:border-l-primary dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)] transition-all h-full">
+          <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="flex items-center gap-2">
                 <Microscope className="h-4 w-4 text-primary" />

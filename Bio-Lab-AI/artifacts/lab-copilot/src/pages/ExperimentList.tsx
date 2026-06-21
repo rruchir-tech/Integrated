@@ -67,7 +67,7 @@ export function ExperimentList() {
           <MotionButton 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
-            className="dark:shadow-[0_0_12px_rgba(0,245,255,0.3)]"
+            className=""
           >
             <Plus className="mr-2 h-4 w-4" />
             New Experiment
@@ -108,7 +108,7 @@ export function ExperimentList() {
               whileTap={{ scale: 0.96 }}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all ${
                 statusFilter === value
-                  ? "bg-primary text-primary-foreground border-primary dark:shadow-[0_0_10px_rgba(0,245,255,0.3)]"
+                  ? "bg-primary text-primary-foreground border-primary"
                   : "bg-muted/50 border-border hover:border-primary/50 hover:bg-muted"
               }`}
             >

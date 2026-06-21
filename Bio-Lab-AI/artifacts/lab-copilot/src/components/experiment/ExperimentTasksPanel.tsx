@@ -135,7 +135,7 @@ export function ExperimentTasksPanel({ experimentId, prefillTitle, prefillRecIdx
   const done = (tasks ?? []).filter((t) => t.status === "done");
 
   return (
-    <Card className="hover:border-l-2 hover:border-l-primary transition-all dark:hover:shadow-[0_0_20px_rgba(0,245,255,0.08)]">
+    <Card className="hover:border-l-2 hover:border-l-primary transition-all">
       <CardHeader className="py-4 border-b">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">

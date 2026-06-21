@@ -192,7 +192,7 @@ const clerkAppearance = {
     logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
   },
   variables: {
-    colorPrimary: "#00f5ff",
+    colorPrimary: "#1f9aa8",
     colorForeground: "#d5e8f7",
     colorMutedForeground: "#658fb0",
     colorDanger: "#ef4444",
@@ -212,7 +212,7 @@ const clerkAppearance = {
     headerSubtitle: "text-[#658fb0]",
     socialButtonsBlockButtonText: "text-[#d5e8f7] font-medium",
     formFieldLabel: "text-[#658fb0] text-sm",
-    footerActionLink: "text-[#00f5ff] hover:text-[#00f5ff]/80 font-medium",
+    footerActionLink: "text-[#1f9aa8] hover:text-[#1f9aa8]/80 font-medium",
   },
 };
 

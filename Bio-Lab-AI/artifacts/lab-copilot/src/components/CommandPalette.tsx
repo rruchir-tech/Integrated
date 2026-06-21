@@ -76,7 +76,7 @@ export function CommandPalette() {
             transition={{ duration: 0.15 }}
           >
             <Command
-              className="rounded-xl border border-border bg-background shadow-2xl dark:shadow-[0_0_40px_rgba(0,245,255,0.15)] overflow-hidden"
+              className="rounded-xl border border-border bg-background shadow-2xl overflow-hidden"
               shouldFilter={false}
             >
               <div className="flex items-center border-b border-border px-4 py-3 gap-3">

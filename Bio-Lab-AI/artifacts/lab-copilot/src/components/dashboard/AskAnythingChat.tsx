@@ -56,7 +56,7 @@ export function AskAnythingChat() {
   const isEmpty = !response && !isStreaming;
 
   return (
-    <Card className="border-primary/20 dark:shadow-[0_0_24px_rgba(0,245,255,0.08)]">
+    <Card className="border-primary/20">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
