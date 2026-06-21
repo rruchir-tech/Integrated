@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db, projects, experiments } from "@workspace/db";
+import { db, projects, experiments, projectDocuments } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
@@ -155,6 +155,87 @@ router.put("/experiments/:id/project", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to assign experiment to project");
     return res.status(400).json({ error: String(err) });
+  }
+});
+
+// ── project context documents (lab notebook, protocols, notes) ──
+const MAX_DOC_CHARS = 200_000;
+
+async function userOwnsProject(projectId: number, userId: string): Promise<boolean> {
+  const proj = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.user_id, userId)))
+    .limit(1);
+  return !!proj[0];
+}
+
+router.get("/projects/:id/documents", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const projectId = parseInt(req.params.id, 10);
+    if (!(await userOwnsProject(projectId, userId))) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+    const docs = await db
+      .select({
+        id: projectDocuments.id,
+        name: projectDocuments.name,
+        chars: sql<number>`length(${projectDocuments.content})`,
+        created_at: projectDocuments.created_at,
+      })
+      .from(projectDocuments)
+      .where(and(eq(projectDocuments.project_id, projectId), eq(projectDocuments.user_id, userId)))
+      .orderBy(desc(projectDocuments.created_at));
+    return res.json(docs.map((d) => ({ ...d, chars: Number(d.chars) })));
+  } catch (err) {
+    req.log.error({ err }, "Failed to list project documents");
+    return res.status(500).json({ error: "Failed to list documents" });
+  }
+});
+
+router.post("/projects/:id/documents", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const projectId = parseInt(req.params.id, 10);
+    const { name, content } = (req.body ?? {}) as { name?: unknown; content?: unknown };
+    if (typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ error: "A document name is required" });
+    }
+    if (typeof content !== "string" || !content.trim()) {
+      return res.status(400).json({ error: "Document content is empty" });
+    }
+    if (content.length > MAX_DOC_CHARS) {
+      return res.status(413).json({ error: `Document too large (max ${MAX_DOC_CHARS} characters)` });
+    }
+    if (!(await userOwnsProject(projectId, userId))) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+    const inserted = await db
+      .insert(projectDocuments)
+      .values({ user_id: userId, project_id: projectId, name: name.trim(), content })
+      .returning({ id: projectDocuments.id, name: projectDocuments.name, created_at: projectDocuments.created_at });
+    return res.status(201).json(inserted[0]);
+  } catch (err) {
+    req.log.error({ err }, "Failed to add project document");
+    return res.status(400).json({ error: String(err) });
+  }
+});
+
+router.delete("/project-documents/:docId", async (req, res) => {
+  try {
+    const userId = getAuth(req).userId!;
+    const docId = parseInt(req.params.docId, 10);
+    const deleted = await db
+      .delete(projectDocuments)
+      .where(and(eq(projectDocuments.id, docId), eq(projectDocuments.user_id, userId)))
+      .returning();
+    if (!deleted[0]) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+    return res.status(204).send();
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to delete document" });
   }
 });
 

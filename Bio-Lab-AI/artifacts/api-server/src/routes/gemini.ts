@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
-import { db, conversations, messages, experiments, projects } from "@workspace/db";
+import { db, conversations, messages, experiments, projects, projectDocuments } from "@workspace/db";
 import {
   CreateGeminiConversationBody,
   SendGeminiMessageBody,
@@ -344,10 +344,36 @@ router.post("/projects/:id/chat", async (req, res) => {
       .where(eq(messages.conversationId, convId))
       .orderBy(messages.createdAt);
 
+    // Context documents the researcher attached (lab notebook, protocols, notes).
+    // Optional grounding — never let a doc error (or a not-yet-migrated table)
+    // break the core chat. Concatenate within a character budget.
+    let docsContext = "";
+    try {
+      const docs = await db
+        .select()
+        .from(projectDocuments)
+        .where(and(eq(projectDocuments.project_id, projectId), eq(projectDocuments.user_id, userId)))
+        .orderBy(projectDocuments.created_at);
+      if (docs.length) {
+        let budget = 60_000;
+        const parts: string[] = [];
+        for (const d of docs) {
+          if (budget <= 0) break;
+          const snippet = d.content.slice(0, budget);
+          parts.push(`### ${d.name}\n${snippet}`);
+          budget -= snippet.length;
+        }
+        docsContext = `\n\nPROJECT CONTEXT DOCUMENTS (lab notebook / protocols / notes):\n${parts.join("\n\n")}`;
+      }
+    } catch (e) {
+      req.log.warn({ e }, "project documents unavailable — continuing without them");
+    }
+
     const systemInstruction =
       `${PROJECT_SYSTEM_PROMPT}\n\nPROJECT: ${proj.name}\nGOAL: ${proj.goal ?? "(not specified)"}\n\n` +
-      `EXPERIMENTS IN THIS PROJECT:\n${projExperiments.length ? buildLabHistory(projExperiments) : "(none logged yet)"}\n\n` +
-      `SCIENTIST QUESTION: ${content}`;
+      `EXPERIMENTS IN THIS PROJECT:\n${projExperiments.length ? buildLabHistory(projExperiments) : "(none logged yet)"}` +
+      docsContext +
+      `\n\nSCIENTIST QUESTION: ${content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
