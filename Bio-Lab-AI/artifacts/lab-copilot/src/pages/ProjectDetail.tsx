@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { FolderKanban, FlaskConical, Calendar, Microscope, Plus, Pencil, Trash2, Loader2, ArrowLeft, X } from "lucide-react";
+import { FolderKanban, FlaskConical, Calendar, Microscope, Plus, Pencil, Trash2, Loader2, ArrowLeft, X, FileText, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +51,9 @@ export function ProjectDetail() {
   const [editGoal, setEditGoal] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [addExpId, setAddExpId] = useState("");
+  const [docOpen, setDocOpen] = useState(false);
+  const [docName, setDocName] = useState("");
+  const [docContent, setDocContent] = useState("");
 
   const { data: project, isLoading } = useQuery<ProjectDetailData>({
     queryKey: ["project", projectId],
@@ -100,6 +103,50 @@ export function ProjectDetail() {
     },
     onError: () => toast({ title: "Error", description: "Failed to delete project.", variant: "destructive" }),
   });
+
+  const { data: documents } = useQuery<{ id: number; name: string; chars: number; created_at: string }[]>({
+    queryKey: ["project-docs", projectId],
+    queryFn: () => apiFetch(`/api/projects/${projectId}/documents`).then((r) => r.json()),
+    enabled: !!projectId,
+  });
+
+  const addDocMutation = useMutation({
+    mutationFn: (data: { name: string; content: string }) =>
+      apiFetch(`/api/projects/${projectId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then((r) => { if (!r.ok) throw new Error("add failed"); return r.json(); }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-docs", projectId] });
+      setDocOpen(false); setDocName(""); setDocContent("");
+      toast({ title: "Context added", description: "The project copilot will use it." });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to add context.", variant: "destructive" }),
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: (docId: number) => apiFetch(`/api/project-documents/${docId}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["project-docs", projectId] }),
+    onError: () => toast({ title: "Error", description: "Failed to delete.", variant: "destructive" }),
+  });
+
+  const readFile = (file: File) => {
+    if (!/\.(txt|md|markdown|csv|tsv|json|log|tab|text)$/i.test(file.name)) {
+      toast({
+        title: "Text files only (for now)",
+        description: "Upload .txt, .md, .csv, .tsv or .json — or paste text. PDF/image support is coming.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDocContent(String(reader.result ?? ""));
+      setDocName((n) => (n.trim() ? n : file.name));
+    };
+    reader.readAsText(file);
+  };
 
   if (isLoading) {
     return (
@@ -217,10 +264,92 @@ export function ProjectDetail() {
         </div>
       )}
 
+      {/* Context & notes */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Context &amp; notes
+          </h2>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDocOpen(true)}>
+            <Upload className="h-3.5 w-3.5" /> Add context
+          </Button>
+        </div>
+        {!documents || documents.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
+            Add lab-notebook entries, protocols, or notes — the project copilot reads them as context.
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {documents.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                  <span className="truncate">{d.name}</span>
+                  <span className="text-xs text-muted-foreground font-mono flex-shrink-0">{d.chars.toLocaleString()} chars</span>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
+                  title="Remove"
+                  onClick={() => deleteDocMutation.mutate(d.id)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Project copilot */}
       <div className="pt-2">
         <ProjectChat projectId={project.id} />
       </div>
+
+      {/* Add context dialog */}
+      <Dialog open={docOpen} onOpenChange={(v) => { if (!v) setDocOpen(false); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add project context</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Name</Label>
+              <Input value={docName} onChange={(e) => setDocName(e.target.value)} placeholder="e.g., Lab notebook — week 3" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Content</Label>
+              <Textarea
+                value={docContent}
+                onChange={(e) => setDocContent(e.target.value)}
+                rows={8}
+                placeholder="Paste notes, a protocol, observations… or upload a text file below."
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-primary cursor-pointer hover:underline w-fit">
+              <Upload className="h-4 w-4" />
+              Upload a text file (.txt, .md, .csv, .json)
+              <input
+                type="file"
+                accept=".txt,.md,.markdown,.csv,.tsv,.json,.log,.tab,.text"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDocOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!docName.trim() || !docContent.trim() || addDocMutation.isPending}
+              onClick={() => addDocMutation.mutate({ name: docName.trim(), content: docContent })}
+            >
+              {addDocMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Add context
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
