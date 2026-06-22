@@ -73,9 +73,6 @@ export function LandingPage() {
 
       <main className="flex-1">
         <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-primary/5 blur-3xl" />
-          </div>
           <div className="relative max-w-5xl mx-auto text-center">
             <motion.div
               initial={{ opacity: 0, y: 20 }}

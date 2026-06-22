@@ -713,14 +713,14 @@ export function ExperimentForm() {
                         { label: "Status", value: form.watch("status") },
                       ].map(({ label, value }) => (
                         <div key={label} className="space-y-0.5">
-                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{label}</div>
+                          <div className="text-xs font-semibold text-muted-foreground">{label}</div>
                           <div className="font-medium font-mono text-primary">{value || "—"}</div>
                         </div>
                       ))}
                     </div>
                     {form.watch("notes") && (
                       <div className="mt-4 space-y-0.5">
-                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Notes</div>
+                        <div className="text-xs font-semibold text-muted-foreground">Notes</div>
                         <p className="text-sm text-muted-foreground font-mono whitespace-pre-wrap line-clamp-4">{form.watch("notes")}</p>
                       </div>
                     )}

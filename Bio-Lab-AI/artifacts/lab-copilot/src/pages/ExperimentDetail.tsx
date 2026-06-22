@@ -255,7 +255,7 @@ export function ExperimentDetail() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:flex-shrink-0">
           <StatusBadge status={experiment.status} />
           <Link href={`/experiments/${expId}/edit`}>
-            <MotionButton variant="outline" className="gap-2" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+            <MotionButton variant="outline" className="gap-2" whileTap={{ scale: 0.97 }}>
               <Pencil className="h-4 w-4" />
               Edit
             </MotionButton>
@@ -264,7 +264,6 @@ export function ExperimentDetail() {
             variant="outline"
             className="gap-2"
             onClick={() => printExperimentReport({ experiment, rawData, suggestions })}
-            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >
             <FileDown className="h-4 w-4" />
@@ -274,7 +273,6 @@ export function ExperimentDetail() {
             onClick={() => analyzeMutation.mutate({ id: expId, data: {} })}
             disabled={analyzeMutation.isPending}
             className="gap-2 relative overflow-hidden"
-            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
           >
             {analyzeMutation.isPending && (
@@ -357,7 +355,7 @@ export function ExperimentDetail() {
                   <CardContent className="pt-4">
                     {/* Pass/fail threshold control */}
                     <div className="flex flex-wrap items-center gap-2 mb-4">
-                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Pass / fail</span>
+                      <span className="text-xs font-bold text-muted-foreground">Pass / fail</span>
                       <div className="inline-flex rounded-md border border-border overflow-hidden">
                         <button
                           type="button"
@@ -429,13 +427,13 @@ export function ExperimentDetail() {
                           { label: "Max", value: rawData.stats.max },
                         ].map(({ label, value }) => (
                           <div key={label} className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
-                            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-bold">{label}</div>
+                            <div className="text-xs text-muted-foreground mb-1 font-bold">{label}</div>
                             <div className="text-base font-mono font-medium text-primary">{value ?? "–"}</div>
                           </div>
                         ))}
                         {zPrime !== null && (
                           <div className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
-                            <div className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-bold">Z′-Factor</div>
+                            <div className="text-xs text-muted-foreground mb-1 font-bold">Z′-Factor</div>
                             <div className={`text-base font-mono font-medium ${
                               zPrime >= 0.5 ? "text-emerald-500" : zPrime >= 0 ? "text-yellow-500" : "text-destructive"
                             }`}>
@@ -463,17 +461,17 @@ export function ExperimentDetail() {
                   <CardContent className="pt-4">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                       <div className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
-                        <div className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-bold">Rows</div>
+                        <div className="text-xs text-muted-foreground mb-1 font-bold">Rows</div>
                         <div className="text-lg font-mono font-medium text-primary">{rawData.rows || rawData.total_rows || "N/A"}</div>
                       </div>
                       <div className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
-                        <div className="text-xs text-muted-foreground mb-1 uppercase tracking-widest font-bold">Columns</div>
+                        <div className="text-xs text-muted-foreground mb-1 font-bold">Columns</div>
                         <div className="text-lg font-mono font-medium text-primary">{rawData.columns?.length || "N/A"}</div>
                       </div>
                     </div>
                     {rawData.columns && (
                       <div>
-                        <h4 className="text-sm font-medium mb-2 uppercase tracking-widest">Detected Columns</h4>
+                        <h4 className="text-sm font-medium mb-2">Detected Columns</h4>
                         <div className="flex flex-wrap gap-2">
                           {rawData.columns.map((col: string) => (
                             <Badge key={col} variant="secondary" className="font-mono text-xs hover:bg-primary/20 transition-colors">{col}</Badge>

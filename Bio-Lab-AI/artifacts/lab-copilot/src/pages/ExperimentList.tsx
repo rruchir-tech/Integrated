@@ -65,7 +65,6 @@ export function ExperimentList() {
         </div>
         <Link href="/experiments/new">
           <MotionButton 
-            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             className=""
           >
@@ -104,7 +103,6 @@ export function ExperimentList() {
             <motion.button
               key={value}
               onClick={() => setStatusFilter(value)}
-              whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all ${
                 statusFilter === value

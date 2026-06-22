@@ -193,15 +193,15 @@ export function RecommendationActions({ experimentId, suggestions }: Recommendat
                     className="space-y-3 mt-3"
                   >
                     <div>
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Variable to change</span>
+                      <span className="text-[10px] font-bold text-muted-foreground block mb-1">Variable to change</span>
                       <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-xs text-primary">{sug.variable_to_change}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Rationale</span>
+                      <span className="text-[10px] font-bold text-muted-foreground block mb-1">Rationale</span>
                       <p className="text-muted-foreground leading-snug text-sm">{sug.rationale}</p>
                     </div>
                     <div className="bg-primary/5 p-2 rounded border border-primary/20">
-                      <span className="text-[10px] font-bold text-primary uppercase tracking-widest block mb-1">Expected Outcome</span>
+                      <span className="text-[10px] font-bold text-primary block mb-1">Expected Outcome</span>
                       <p className="text-foreground leading-snug font-mono text-xs">{sug.expected_outcome}</p>
                     </div>
 
