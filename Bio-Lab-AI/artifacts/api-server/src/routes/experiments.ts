@@ -8,6 +8,7 @@ import {
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
+import { assayGuidanceBlock } from "../lib/assayKnowledge";
 import { getAuth } from "@clerk/express";
 import * as XLSX from "xlsx";
 
@@ -502,27 +503,30 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       exp.assay_type?.toLowerCase().includes("absorbance") ||
       (exp.raw_data_json?.includes('"_type":"plate96"') ?? false));
 
+    const assayGuidance = assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+
     const systemPrompt = isPlateReaderExp
-      ? `You are an expert plate-reader assay analyst (ELISA, absorbance, fluorescence, luminescence, viability). Analyze the plate data quantitatively and report HARD NUMBERS, not just descriptions.
+      ? `You are a senior assay scientist reviewing a colleague's plate-reader run. Think like a bench scientist, not a report generator: first work out what this experiment was TRYING to do from its protocol/notes, state the result you would EXPECT if it worked, then judge what the data actually shows and explain WHY — distinguishing a technical problem from a real biological finding.
 
-QC metrics: within-replicate CV%, outlier wells (cite specific well IDs and values), signal-to-background ratio, edge effects (peripheral vs. inner wells), and blank/zero wells.
+${assayGuidance}
 
-Quantitative readout — infer the assay from the metadata and plate layout, then compute the appropriate metric:
-- Viability / cytotoxicity dose-response (e.g. MTT, CTG, resazurin): normalize to % viability against the highest-signal (untreated) wells, fit a 4-parameter logistic, and report an IC50/EC50 estimate in the dose unit (state the assumed dose axis); flag if the IC50 falls outside the tested range.
-- ELISA / standard curve: fit the standard curve, report R^2, and interpolate the unknowns.
-- If positive and negative controls are identifiable, compute the Z'-factor and rate plate quality (Z' >= 0.5 excellent, 0-0.5 marginal, < 0 fail).
+Your analysis MUST cover, in this order:
+1. Intent & expectation — in 1–2 sentences, restate what the experiment set out to test (from the protocol/notes) and the result you'd expect if it succeeded.
+2. Quantitative readout — compute the assay-appropriate metric using the method above, with HARD NUMBERS and specific well IDs/values (e.g. % viability range, IC50/EC50 with the assumed dose axis, interpolated concentration with R², or fold-change). State the assumptions you made (dose axis, which wells are controls).
+3. Plate QC — replicate CV%, outlier wells (cite IDs + values), signal-to-background, edge effects (peripheral vs inner wells), and the Z'-factor if positive/negative controls are identifiable (Z' ≥ 0.5 excellent, 0–0.5 marginal, < 0 fail).
+4. Verdict — do the results match the expectation? If YES, confirm and give your confidence. If NO, diagnose the most likely cause and rank possibilities: technical (edge-well evaporation, high CV, vehicle toxicity, missing blank subtraction, saturated/floored signal, dead controls) vs biological (compound inactive, dose range wrong, weak effect). Be concrete about which wells/numbers led you there.
 
-Lead the summary with the key quantitative metrics (IC50/EC50, Z'-factor, % viability range, signal:background). Explicitly state any assumptions you made about plate layout, controls, or the dose axis. Recommend concrete corrective action if CV% > 20% or outliers are detected.`
-      : `You are an expert lab scientist AI copilot. Diagnose experiments and plan next steps. Be specific and quantitative — when data is present, compute the assay-appropriate readout (e.g. fold-change/ΔΔCt for qPCR, concentration from a standard curve, band ratios for blots) and lead with the hard numbers, citing the data you see. State any assumptions.`;
+Write the summary as clean markdown with short bold section headers. Lead with the headline number(s) and the verdict.`
+      : `You are a senior lab scientist reviewing a colleague's experiment. Think like a bench scientist: infer the experiment's intent from the protocol/notes, state the expected result, then judge what the data shows and explain why. Be specific and quantitative — compute the assay-appropriate readout (e.g. ΔΔCt fold-change for qPCR, concentration from a standard curve, band ratios for blots), lead with hard numbers citing the data, give a clear verdict (expected vs not, with a ranked diagnosis if not), and state your assumptions.`;
 
-    const userPrompt = `Analyze this experiment and provide: 1) A concise summary of what happened, 2) Key observations, 3) Exactly 3 suggested next experiments in JSON format.
+    const userPrompt = `Review this experiment like a scientist: understand its intent from the protocol/notes, state what you'd expect, quantify what actually happened, and give a verdict with diagnosis. Then propose exactly 3 next experiments.
 
 Experiment: ${exp.name}
 Date: ${exp.date}
 Assay type: ${exp.assay_type}
 Instrument: ${exp.instrument}
 Status: ${exp.status}
-Notes: ${exp.notes ?? "None"}${dataContext}${relatedContext}${focusNote}
+Protocol / notes: ${exp.notes ?? "None provided — infer the assay and intent from the assay type and data."}${dataContext}${relatedContext}${focusNote}
 
 Respond in this exact JSON format:
 {

@@ -7,13 +7,13 @@ import {
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
+import { assayGuidanceBlock } from "../lib/assayKnowledge";
 import { getAuth } from "@clerk/express";
 
 const router: IRouter = Router();
 
-const LAB_SYSTEM_PROMPT = `You are an expert cell biologist and lab copilot.
-You have access to this lab's full experiment history.
-Always reference specific experiments by name when answering. Be specific, actionable, and scientific.`;
+const LAB_SYSTEM_PROMPT = `You are an expert cell biologist and lab copilot with access to this lab's full experiment history.
+Think like a bench scientist: when asked about an experiment, reason from its protocol/notes — what was it trying to test, what result was expected, and does the data match? If results are off, diagnose the likely cause (distinguish a technical problem from a real biological finding) and cite the specific wells/numbers. Always reference specific experiments by name. Be specific, quantitative, and actionable.`;
 
 const GENERAL_SYSTEM_PROMPT = `You are an expert biotech and cell biology advisor.
 Answer general scientific questions, explain concepts, help with protocol design, and discuss biotech topics. Be concise and scientific.`;
@@ -216,6 +216,9 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       .orderBy(desc(experiments.date));
 
     let systemInstruction = LAB_SYSTEM_PROMPT;
+    if (exp) {
+      systemInstruction += `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}`;
+    }
     systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${body.content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
