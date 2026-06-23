@@ -273,6 +273,29 @@ export function ExperimentDetail() {
   const zPrimeComputed = controlMetrics?.zPrime ?? null;
   const zPrimeDisplay = zPrimeComputed ?? zPrime;
   const zPrimeIsComputed = zPrimeComputed !== null;
+
+  // When the user has marked control wells, send them to the analyzer as ground
+  // truth so the AI quantifies off the real plate map instead of guessing.
+  const controlSummary = (() => {
+    if (!isPlate96 || Object.keys(wellRoles).length === 0) return undefined;
+    const byRole = (role: WellRole) =>
+      Object.entries(wellRoles).filter(([, r]) => r === role).map(([w]) => w).sort();
+    const pos = byRole("pos");
+    const neg = byRole("neg");
+    const blank = byRole("blank");
+    if (pos.length === 0 && neg.length === 0 && blank.length === 0) return undefined;
+    const round = (n: number | null) => (n == null ? null : Number(n.toFixed(3)));
+    return {
+      positive_control_wells: pos,
+      negative_control_wells: neg,
+      blank_wells: blank,
+      mean_positive: round(controlMetrics?.meanPos ?? null),
+      mean_negative: round(controlMetrics?.meanNeg ?? null),
+      zprime: round(controlMetrics?.zPrime ?? null),
+      signal_to_background: round(controlMetrics?.signalToBackground ?? null),
+    };
+  })();
+  const analyzeData = (controlSummary ? { control_summary: controlSummary } : {}) as Record<string, unknown>;
   const suggestions: {
     title: string;
     variable_to_change: string;
@@ -328,7 +351,7 @@ export function ExperimentDetail() {
             Export PDF
           </MotionButton>
           <MotionButton
-            onClick={() => analyzeMutation.mutate({ id: expId, data: {} })}
+            onClick={() => analyzeMutation.mutate({ id: expId, data: analyzeData as never })}
             disabled={analyzeMutation.isPending}
             className="gap-2 relative overflow-hidden"
             whileTap={{ scale: 0.97 }}

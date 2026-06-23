@@ -497,6 +497,20 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       ? `\nFocus question: ${bodyParsed.focus_question}`
       : "";
 
+    // The client sends the scientist's plate layout (marked control wells) so the
+    // AI quantifies off the real plate map instead of guessing which wells are controls.
+    const cs = (req.body && typeof req.body === "object")
+      ? (req.body as Record<string, unknown>).control_summary as Record<string, unknown> | undefined
+      : undefined;
+    const controlsBlock = cs
+      ? `\n\nUSER-DESIGNATED CONTROLS (ground truth from the scientist's plate layout — use these EXACT wells for normalization and Z'; do NOT guess which wells are controls):
+- Positive control wells: ${(cs.positive_control_wells as string[] | undefined)?.join(", ") || "none"}
+- Negative control wells: ${(cs.negative_control_wells as string[] | undefined)?.join(", ") || "none"}
+- Blank wells: ${(cs.blank_wells as string[] | undefined)?.join(", ") || "none"}
+- Already computed from these controls: mean(+)=${cs.mean_positive ?? "n/a"}, mean(−)=${cs.mean_negative ?? "n/a"}, Z'=${cs.zprime ?? "n/a"}, signal:background=${cs.signal_to_background ?? "n/a"}.
+Normalize sample wells to % of control using these control means, and report this Z' as the plate-quality metric.`
+      : "";
+
     const isPlateReaderExp = (exp.instrument?.toLowerCase().includes("synergy") ||
       exp.assay_type?.toLowerCase().includes("plate reader") ||
       exp.assay_type?.toLowerCase().includes("elisa") ||
@@ -526,7 +540,7 @@ Date: ${exp.date}
 Assay type: ${exp.assay_type}
 Instrument: ${exp.instrument}
 Status: ${exp.status}
-Protocol / notes: ${exp.notes ?? "None provided — infer the assay and intent from the assay type and data."}${dataContext}${relatedContext}${focusNote}
+Protocol / notes: ${exp.notes ?? "None provided — infer the assay and intent from the assay type and data."}${dataContext}${relatedContext}${focusNote}${controlsBlock}
 
 Respond in this exact JSON format:
 {
