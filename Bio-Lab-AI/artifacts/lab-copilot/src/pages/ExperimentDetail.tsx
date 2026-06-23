@@ -30,6 +30,9 @@ import { CommentsPanel } from "@/components/experiment/CommentsPanel";
 import { ExperimentTasksPanel } from "@/components/experiment/ExperimentTasksPanel";
 import { RecommendationActions } from "@/components/experiment/RecommendationActions";
 import { printExperimentReport } from "@/lib/printExperimentReport";
+import { computeControlMetrics, ROLE_COLOR, ROLE_LABEL, ROLE_SHORT, type WellRole } from "@/lib/plateMetrics";
+
+const ROW_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
 const MotionButton = motion.create(Button);
 
@@ -46,6 +49,11 @@ export function ExperimentDetail() {
   const [passThreshold, setPassThreshold] = useState<number | null>(null);
   const [passDirection, setPassDirection] = useState<"above" | "below">("above");
   const skipPersistRef = useRef(true);
+  // Plate layout — per-well control/sample/blank roles for deterministic Z'-factor.
+  const [wellRoles, setWellRoles] = useState<Record<string, WellRole>>({});
+  const [activeRole, setActiveRole] = useState<WellRole>("pos");
+  const [layoutEdit, setLayoutEdit] = useState(false);
+  const skipLayoutPersistRef = useRef(true);
 
   const { data: experiment, isLoading } = useGetExperiment(expId, {
     query: { enabled: !!expId, queryKey: getGetExperimentQueryKey(expId) }
@@ -116,6 +124,47 @@ export function ExperimentDetail() {
       else localStorage.setItem(`passfail:${expId}`, JSON.stringify({ threshold: passThreshold, direction: passDirection }));
     } catch { /* ignore */ }
   }, [expId, passThreshold, passDirection]);
+
+  // Load saved plate layout for this experiment.
+  useEffect(() => {
+    skipLayoutPersistRef.current = true;
+    let r: Record<string, WellRole> = {};
+    try {
+      const raw = expId ? localStorage.getItem(`layout:${expId}`) : null;
+      if (raw) r = JSON.parse(raw) || {};
+    } catch { /* ignore */ }
+    setWellRoles(r);
+  }, [expId]);
+
+  // Persist layout on change (skip the write caused by the load above).
+  useEffect(() => {
+    if (skipLayoutPersistRef.current) { skipLayoutPersistRef.current = false; return; }
+    if (!expId) return;
+    try {
+      if (Object.keys(wellRoles).length === 0) localStorage.removeItem(`layout:${expId}`);
+      else localStorage.setItem(`layout:${expId}`, JSON.stringify(wellRoles));
+    } catch { /* ignore */ }
+  }, [expId, wellRoles]);
+
+  const assignWell = (well: string) =>
+    setWellRoles((prev) => {
+      const next = { ...prev };
+      if (next[well] === activeRole) delete next[well]; // click again to clear
+      else next[well] = activeRole;
+      return next;
+    });
+  const assignCol = (col: number) =>
+    setWellRoles((prev) => {
+      const next = { ...prev };
+      for (const row of ROW_LETTERS) next[`${row}${col}`] = activeRole;
+      return next;
+    });
+  const assignRow = (row: string) =>
+    setWellRoles((prev) => {
+      const next = { ...prev };
+      for (let c = 1; c <= 12; c++) next[`${row}${c}`] = activeRole;
+      return next;
+    });
 
   const downloadCsv = () => {
     if (!experiment || !rawData?.wells) return;
@@ -215,6 +264,15 @@ export function ExperimentDetail() {
     rawData?.stats?.sd != null && scorableWells.length > 0
       ? rawData.stats.sd / Math.sqrt(scorableWells.length)
       : null;
+
+  // Deterministic plate-quality metrics from user-designated control wells.
+  const controlMetrics = isPlate96 && Array.isArray(rawData?.wells)
+    ? computeControlMetrics(rawData.wells, wellRoles)
+    : null;
+  // Prefer the computed Z' (from real controls); fall back to the AI-parsed value.
+  const zPrimeComputed = controlMetrics?.zPrime ?? null;
+  const zPrimeDisplay = zPrimeComputed ?? zPrime;
+  const zPrimeIsComputed = zPrimeComputed !== null;
   const suggestions: {
     title: string;
     variable_to_change: string;
@@ -409,6 +467,67 @@ export function ExperimentDetail() {
                         </>
                       )}
                     </div>
+
+                    {/* Plate layout — mark control wells for deterministic Z'-factor */}
+                    <div className="mb-4 rounded-lg border border-border/60 bg-muted/30 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-muted-foreground">Plate layout</span>
+                        <Button
+                          variant={layoutEdit ? "default" : "outline"}
+                          size="sm"
+                          className="h-8 px-3 text-xs"
+                          onClick={() => setLayoutEdit((v) => !v)}
+                        >
+                          {layoutEdit ? "Done" : "Define controls"}
+                        </Button>
+                        {Object.keys(wellRoles).length > 0 && (
+                          <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setWellRoles({})}>
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+
+                      {layoutEdit && (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {(["pos", "neg", "sample", "blank"] as WellRole[]).map((role) => (
+                              <button
+                                key={role}
+                                type="button"
+                                onClick={() => setActiveRole(role)}
+                                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors"
+                                style={
+                                  activeRole === role
+                                    ? { backgroundColor: ROLE_COLOR[role], borderColor: ROLE_COLOR[role], color: "#fff" }
+                                    : { borderColor: ROLE_COLOR[role] }
+                                }
+                              >
+                                <span className="font-bold">{ROLE_SHORT[role]}</span>
+                                {ROLE_LABEL[role]}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Click wells, a row letter, or a column number to mark them as{" "}
+                            <strong>{ROLE_LABEL[activeRole]}</strong>. Click a marked well again to clear it.
+                          </p>
+                        </div>
+                      )}
+
+                      {controlMetrics && (controlMetrics.nPos > 0 || controlMetrics.nNeg > 0) && (
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono">
+                          <span className="text-muted-foreground">+ ctrl: <span className="text-foreground">{controlMetrics.nPos}</span></span>
+                          <span className="text-muted-foreground">− ctrl: <span className="text-foreground">{controlMetrics.nNeg}</span></span>
+                          {controlMetrics.signalToBackground != null && (
+                            <span className="text-muted-foreground">S/B: <span className="text-foreground">{controlMetrics.signalToBackground.toFixed(1)}×</span></span>
+                          )}
+                          {controlMetrics.zPrime == null && (controlMetrics.nPos < 2 || controlMetrics.nNeg < 2) && (
+                            <span className="text-yellow-600">Mark ≥2 of each control to compute Z′</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <PlateHeatmap
                       ref={heatmapRef}
                       wells={rawData.wells}
@@ -416,9 +535,14 @@ export function ExperimentDetail() {
                       wavelength={rawData.metadata?.wavelength}
                       passThreshold={passThreshold}
                       passDirection={passDirection}
+                      roles={wellRoles}
+                      editMode={layoutEdit}
+                      onAssignWell={assignWell}
+                      onAssignRow={assignRow}
+                      onAssignCol={assignCol}
                     />
                     {rawData.stats && (
-                      <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrime !== null ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-3 lg:grid-cols-5"}`}>
+                      <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrimeDisplay !== null ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-3 lg:grid-cols-5"}`}>
                         {[
                           { label: "Mean", value: rawData.stats.mean },
                           { label: "Std Dev", value: rawData.stats.sd },
@@ -431,15 +555,17 @@ export function ExperimentDetail() {
                             <div className="text-base font-mono font-medium text-primary">{value ?? "–"}</div>
                           </div>
                         ))}
-                        {zPrime !== null && (
+                        {zPrimeDisplay !== null && (
                           <div className="bg-muted rounded-lg p-3 border border-transparent hover:border-primary/50 transition-colors">
                             <div className="text-xs text-muted-foreground mb-1 font-bold">Z′-Factor</div>
                             <div className={`text-base font-mono font-medium ${
-                              zPrime >= 0.5 ? "text-emerald-500" : zPrime >= 0 ? "text-yellow-500" : "text-destructive"
+                              zPrimeDisplay >= 0.5 ? "text-emerald-500" : zPrimeDisplay >= 0 ? "text-yellow-500" : "text-destructive"
                             }`}>
-                              {zPrime.toFixed(2)}
+                              {zPrimeDisplay.toFixed(2)}
                             </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">≥0.5 excellent</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {zPrimeIsComputed ? "computed from controls" : "from AI · define controls"}
+                            </div>
                           </div>
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import { useState, forwardRef } from "react";
+import { ROLE_COLOR, ROLE_SHORT, type WellRole } from "@/lib/plateMetrics";
 
 interface WellData {
   well: string;
@@ -28,6 +29,13 @@ interface PlateHeatmapProps {
   passThreshold?: number | null;
   /** "above" = pass when value >= cutoff; "below" = pass when value <= cutoff. */
   passDirection?: "above" | "below";
+  /** Per-well role assignments (plate layout). Shown as colored rings + letters. */
+  roles?: Record<string, WellRole>;
+  /** In edit mode, clicking a well / row label / column header assigns the active role. */
+  editMode?: boolean;
+  onAssignWell?: (well: string) => void;
+  onAssignRow?: (row: string) => void;
+  onAssignCol?: (col: number) => void;
 }
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
@@ -59,7 +67,7 @@ function interpolateColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false, passThreshold = null, passDirection = "above" }, ref) {
+export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false, passThreshold = null, passDirection = "above", roles, editMode = false, onAssignWell, onAssignRow, onAssignCol }, ref) {
   const [tooltip, setTooltip] = useState<{
     well: string;
     value: number | null;
@@ -84,27 +92,29 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
     passDirection === "below" ? value <= (passThreshold as number) : value >= (passThreshold as number);
 
   const getWellStyle = (w: WellData): React.CSSProperties => {
+    const role = roles?.[w.well];
+    const roleBorder = role ? `2px solid ${ROLE_COLOR[role]}` : null;
     if (w.value === null || w.status === "blank") {
       return {
         backgroundColor: "hsl(var(--muted))",
         opacity: 0.4,
-        border: "1px solid hsl(var(--border))",
+        border: roleBorder ?? "1px solid hsl(var(--border))",
       };
     }
     if (thresholdActive) {
       const pass = isPass(w.value);
       return {
         backgroundColor: pass ? "rgb(34,197,94)" : "rgb(239,68,68)",
-        border: "1px solid transparent",
+        border: roleBorder ?? "1px solid transparent",
         opacity: pass ? 1 : 0.9,
       };
     }
     const t = getNorm(w.value);
     return {
       backgroundColor: interpolateColor(t),
-      border: w.status === "high" || w.status === "low"
+      border: roleBorder ?? (w.status === "high" || w.status === "low"
         ? "2px solid hsl(var(--destructive))"
-        : "1px solid transparent",
+        : "1px solid transparent"),
     };
   };
 
@@ -119,7 +129,8 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
             {COLS.map((c) => (
               <div
                 key={c}
-                className={`${compact ? "w-7" : "w-8"} text-center font-mono ${labelSize} text-muted-foreground`}
+                onClick={editMode ? () => onAssignCol?.(c) : undefined}
+                className={`${compact ? "w-7" : "w-8"} text-center font-mono ${labelSize} text-muted-foreground ${editMode ? "cursor-pointer rounded hover:text-primary hover:bg-primary/10" : ""}`}
               >
                 {c}
               </div>
@@ -129,7 +140,8 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
           {ROWS.map((r) => (
             <div key={r} className="flex items-center gap-0.5 mb-0.5">
               <div
-                className={`w-5 text-right font-mono ${labelSize} text-muted-foreground mr-1 flex-shrink-0`}
+                onClick={editMode ? () => onAssignRow?.(r) : undefined}
+                className={`w-5 text-right font-mono ${labelSize} text-muted-foreground mr-1 flex-shrink-0 ${editMode ? "cursor-pointer rounded hover:text-primary hover:bg-primary/10" : ""}`}
               >
                 {r}
               </div>
@@ -144,11 +156,13 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
                     />
                   );
                 }
+                const role = roles?.[wellId];
                 return (
                   <div
                     key={wellId}
                     className={`${cellSize} rounded-full flex items-center justify-center flex-shrink-0 cursor-pointer transition-transform hover:scale-110 hover:z-10 relative`}
                     style={getWellStyle(well)}
+                    onClick={editMode ? () => onAssignWell?.(wellId) : undefined}
                     onMouseEnter={(e) => {
                       const rect = (e.target as HTMLElement).getBoundingClientRect();
                       setTooltip({
@@ -160,7 +174,16 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
                       });
                     }}
                     onMouseLeave={() => setTooltip(null)}
-                  />
+                  >
+                    {role && (
+                      <span
+                        className="font-bold leading-none pointer-events-none"
+                        style={{ color: "#fff", textShadow: "0 0 2px rgba(0,0,0,0.7)" }}
+                      >
+                        {ROLE_SHORT[role]}
+                      </span>
+                    )}
+                  </div>
                 );
               })}
             </div>
