@@ -53,6 +53,7 @@ export function ExperimentDetail() {
   const [wellRoles, setWellRoles] = useState<Record<string, WellRole>>({});
   const [activeRole, setActiveRole] = useState<WellRole>("pos");
   const [layoutEdit, setLayoutEdit] = useState(false);
+  const [normalizeView, setNormalizeView] = useState(false);
   const skipLayoutPersistRef = useRef(true);
 
   const { data: experiment, isLoading } = useGetExperiment(expId, {
@@ -549,6 +550,19 @@ export function ExperimentDetail() {
                           )}
                         </div>
                       )}
+
+                      {controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null && (
+                        <div className="mt-2">
+                          <Button
+                            variant={normalizeView ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setNormalizeView((v) => !v)}
+                          >
+                            {normalizeView ? "Showing % of control" : "Show % of control"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     <PlateHeatmap
@@ -563,6 +577,9 @@ export function ExperimentDetail() {
                       onAssignWell={assignWell}
                       onAssignRow={assignRow}
                       onAssignCol={assignCol}
+                      normalizeToControl={normalizeView}
+                      meanPos={controlMetrics?.meanPos ?? null}
+                      meanNeg={controlMetrics?.meanNeg ?? null}
                     />
                     {rawData.stats && (
                       <div className={`grid grid-cols-2 gap-3 mt-5 ${zPrimeDisplay !== null ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-3 lg:grid-cols-5"}`}>

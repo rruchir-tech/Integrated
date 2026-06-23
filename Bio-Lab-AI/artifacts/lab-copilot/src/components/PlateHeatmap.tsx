@@ -1,5 +1,5 @@
 import { useState, forwardRef } from "react";
-import { ROLE_COLOR, ROLE_SHORT, type WellRole } from "@/lib/plateMetrics";
+import { ROLE_COLOR, ROLE_SHORT, percentOfControl, type WellRole } from "@/lib/plateMetrics";
 
 interface WellData {
   well: string;
@@ -36,6 +36,10 @@ interface PlateHeatmapProps {
   onAssignWell?: (well: string) => void;
   onAssignRow?: (row: string) => void;
   onAssignCol?: (col: number) => void;
+  /** Color wells by % of control (needs meanPos/meanNeg from the marked controls). */
+  normalizeToControl?: boolean;
+  meanPos?: number | null;
+  meanNeg?: number | null;
 }
 
 const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
@@ -67,7 +71,19 @@ function interpolateColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false, passThreshold = null, passDirection = "above", roles, editMode = false, onAssignWell, onAssignRow, onAssignCol }, ref) {
+// % -of-control scale: 0% (negative control / dead) red → 50% yellow → 100% (positive / viable) green.
+function normColor(pct: number): string {
+  const t = Math.max(0, Math.min(1, pct / 100));
+  const stops: [number, number, number][] = [[239, 68, 68], [234, 179, 8], [34, 197, 94]];
+  const seg = t * (stops.length - 1);
+  const i = Math.min(Math.floor(seg), stops.length - 2);
+  const f = seg - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+
+export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(function PlateHeatmap({ wells, stats, wavelength, compact = false, passThreshold = null, passDirection = "above", roles, editMode = false, onAssignWell, onAssignRow, onAssignCol, normalizeToControl = false, meanPos = null, meanNeg = null }, ref) {
   const [tooltip, setTooltip] = useState<{
     well: string;
     value: number | null;
@@ -91,6 +107,9 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
   const isPass = (value: number) =>
     passDirection === "below" ? value <= (passThreshold as number) : value >= (passThreshold as number);
 
+  const normActive = normalizeToControl && meanPos != null && meanNeg != null && meanPos !== meanNeg;
+  const pctOf = (value: number) => percentOfControl(value, meanPos, meanNeg);
+
   const getWellStyle = (w: WellData): React.CSSProperties => {
     const role = roles?.[w.well];
     const roleBorder = role ? `2px solid ${ROLE_COLOR[role]}` : null;
@@ -107,6 +126,13 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
         backgroundColor: pass ? "rgb(34,197,94)" : "rgb(239,68,68)",
         border: roleBorder ?? "1px solid transparent",
         opacity: pass ? 1 : 0.9,
+      };
+    }
+    if (normActive) {
+      const pct = pctOf(w.value);
+      return {
+        backgroundColor: pct == null ? interpolateColor(getNorm(w.value)) : normColor(pct),
+        border: roleBorder ?? "1px solid transparent",
       };
     }
     const t = getNorm(w.value);
@@ -224,12 +250,25 @@ export const PlateHeatmap = forwardRef<HTMLDivElement, PlateHeatmapProps>(functi
                 {isPass(tooltip.value) ? "✓ Pass" : "✗ Fail"} ({passDirection === "below" ? "≤" : "≥"} {passThreshold})
               </div>
             )}
+            {normActive && tooltip.value !== null && tooltip.status !== "blank" && pctOf(tooltip.value) != null && (
+              <div className="text-foreground">{pctOf(tooltip.value)!.toFixed(0)}% of control</div>
+            )}
           </div>
         </div>
       )}
 
       <div className="mt-3 flex items-center gap-3 flex-wrap">
-        {thresholdActive ? (
+        {normActive ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>% of control</span>
+            <div className="flex gap-0.5">
+              {[0, 25, 50, 75, 100].map((p) => (
+                <div key={p} className="w-4 h-3 rounded-sm" style={{ backgroundColor: normColor(p) }} />
+              ))}
+            </div>
+            <span className="font-mono">0% – 100%</span>
+          </div>
+        ) : thresholdActive ? (
           <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: "rgb(34,197,94)" }} /> Pass
