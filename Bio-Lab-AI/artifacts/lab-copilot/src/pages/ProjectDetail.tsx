@@ -3,13 +3,15 @@ import { useParams, Link } from "wouter";
 import { apiFetch } from "@/lib/apiFetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { FolderKanban, FlaskConical, Calendar, Microscope, Plus, Pencil, Trash2, Loader2, ArrowLeft, X, FileText, Upload } from "lucide-react";
+import { FolderKanban, FlaskConical, Calendar, Microscope, Plus, Pencil, Trash2, Loader2, ArrowLeft, X, FileText, Upload, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Label } from "@/components/ui/label";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 import {
@@ -38,6 +40,7 @@ interface ProjectDetailData {
   name: string;
   goal: string | null;
   status: string;
+  ai_summary: string | null;
   experiments: ExperimentRef[];
 }
 
@@ -71,6 +74,20 @@ export function ProjectDetail() {
     queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projects"] });
   };
+
+  const synthesizeMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/projects/${projectId}/synthesize`, { method: "POST" }).then(async (r) => {
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          throw new Error((e as { error?: string }).error || "Synthesis failed");
+        }
+        return r.json();
+      }),
+    onSuccess: () => { invalidate(); toast({ title: "Project synthesized" }); },
+    onError: (e: unknown) =>
+      toast({ title: "Couldn't synthesize", description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
+  });
 
   const assignMutation = useMutation({
     mutationFn: ({ expId, project_id }: { expId: number; project_id: number | null }) =>
@@ -196,6 +213,41 @@ export function ProjectDetail() {
           </Button>
         </div>
       </div>
+
+      {/* Project synthesis */}
+      <Card>
+        <CardHeader className="py-4 border-b">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Project synthesis
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              disabled={synthesizeMutation.isPending || project.experiments.length === 0}
+              onClick={() => synthesizeMutation.mutate()}
+            >
+              {synthesizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {project.ai_summary ? "Re-synthesize" : "Synthesize"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {project.ai_summary ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{project.ai_summary}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {project.experiments.length === 0
+                ? "Add experiments, then synthesize to get an AI “state of the project” across all of them."
+                : "Generate an AI synthesis across this project’s experiments and context — what’s established, the patterns between runs, and the best next experiments."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add experiment */}
       <div className="flex flex-wrap items-center gap-2">
