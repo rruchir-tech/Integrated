@@ -31,6 +31,7 @@ import { ExperimentTasksPanel } from "@/components/experiment/ExperimentTasksPan
 import { RecommendationActions } from "@/components/experiment/RecommendationActions";
 import { printExperimentReport } from "@/lib/printExperimentReport";
 import { computeControlMetrics, ROLE_COLOR, ROLE_LABEL, ROLE_SHORT, type WellRole } from "@/lib/plateMetrics";
+import { DoseResponseCard } from "@/components/DoseResponseCard";
 
 const ROW_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
@@ -612,6 +613,17 @@ export function ExperimentDetail() {
                     )}
                   </CardContent>
                 </Card>
+              </motion.div>
+            )}
+
+            {rawData && isPlate96 && (
+              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.25 }}>
+                <DoseResponseCard
+                  expId={expId}
+                  wells={rawData.wells}
+                  meanPos={controlMetrics?.meanPos ?? null}
+                  meanNeg={controlMetrics?.meanNeg ?? null}
+                />
               </motion.div>
             )}
 

@@ -230,7 +230,7 @@ export function ProjectDetail() {
               onClick={() => synthesizeMutation.mutate()}
             >
               {synthesizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {project.ai_summary ? "Re-synthesize" : "Synthesize"}
+              {synthesizeMutation.isPending ? "Bioalyzing…" : project.ai_summary ? "Re-Bioalyze project" : "Bioalyze project"}
             </Button>
           </div>
         </CardHeader>
