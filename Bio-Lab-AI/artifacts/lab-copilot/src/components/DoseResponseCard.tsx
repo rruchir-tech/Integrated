@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { TrendingDown } from "lucide-react";
+import { TrendingDown, ChevronDown, ChevronRight } from "lucide-react";
 import { fit4PL, serialDilution, type DosePoint } from "@/lib/doseResponse";
 import { percentOfControl } from "@/lib/plateMetrics";
 
@@ -54,6 +54,7 @@ export function DoseResponseCard({
   meanNeg: number | null;
 }) {
   const [cfg, setCfg] = useState<DoseConfig>(DEFAULT_CONFIG);
+  const [expanded, setExpanded] = useState(false);
   const skipRef = useRef(true);
 
   useEffect(() => {
@@ -100,12 +101,19 @@ export function DoseResponseCard({
 
   return (
     <Card>
-      <CardHeader className="py-4 border-b">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <TrendingDown className="h-5 w-5 text-primary" />
-          Dose-response (IC50)
-        </CardTitle>
+      <CardHeader className="py-4 border-b cursor-pointer" onClick={() => setExpanded((v) => !v)}>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-primary" />
+            Dose-response (IC50)
+            {!expanded && fit && (
+              <span className="text-sm font-normal text-muted-foreground">· IC50 {fmtConc(fit.ic50)} {cfg.unit}</span>
+            )}
+          </CardTitle>
+          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </div>
       </CardHeader>
+      {expanded && (
       <CardContent className="pt-4 space-y-4">
         {/* Config */}
         <div className="flex flex-wrap items-end gap-3 text-sm">
@@ -203,7 +211,8 @@ export function DoseResponseCard({
                   type="number"
                   dataKey="dose"
                   scale="log"
-                  domain={["auto", "auto"]}
+                  domain={[fit.curve[0].dose, fit.curve[fit.curve.length - 1].dose]}
+                  allowDataOverflow
                   tickFormatter={fmtConc}
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   label={{ value: `Concentration (${cfg.unit})`, position: "insideBottom", offset: -8, fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
@@ -230,6 +239,7 @@ export function DoseResponseCard({
           </p>
         )}
       </CardContent>
+      )}
     </Card>
   );
 }

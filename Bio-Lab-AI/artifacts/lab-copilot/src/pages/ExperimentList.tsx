@@ -22,7 +22,7 @@ const MotionButton = motion.create(Button);
 const STATUS_FILTERS = [
   { value: "all", label: "All", icon: null, color: "" },
   { value: "success", label: "Success", icon: CheckCircle2, color: "text-emerald-400" },
-  { value: "in_progress", label: "In Progress", icon: Loader2, color: "text-cyan-400" },
+  { value: "in_progress", label: "In Progress", icon: Loader2, color: "text-primary" },
   { value: "failed", label: "Failed", icon: AlertTriangle, color: "text-red-400" },
   { value: "unknown", label: "Unknown", icon: HelpCircle, color: "text-muted-foreground" },
 ];

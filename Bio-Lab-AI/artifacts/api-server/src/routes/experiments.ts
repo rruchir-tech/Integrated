@@ -273,15 +273,25 @@ ${relatedContext}`;
     const stream = await generateContentStreamWithRetry({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      config: { systemInstruction: systemPrompt, maxOutputTokens: 8192 },
+      // Without thinkingBudget:0, gemini-2.5-flash can spend the whole output
+      // budget "thinking" and stream zero text. Disable it for this prose stream.
+      config: { systemInstruction: systemPrompt, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
     });
 
+    let streamed = "";
     for await (const chunk of stream) {
       const text = chunk.text;
-      if (text) res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      if (text) {
+        streamed += text;
+        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      }
     }
 
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    if (streamed.trim()) {
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: "The AI returned an empty report (it may be rate-limited). Please try again." })}\n\n`);
+    }
     return res.end();
   } catch (err) {
     req.log.error({ err }, "Failed to generate data analysis report");
@@ -587,7 +597,7 @@ Respond in this exact JSON format:
     if (!convId) {
       const conv = await db
         .insert(conversations)
-        .values({ title: `Copilot: ${exp.name}` })
+        .values({ title: `Copilot: ${exp.name}`, user_id: userId })
         .returning();
       convId = conv[0].id;
       await db
@@ -667,17 +677,25 @@ Notes: ${e.notes ?? "None"}${e.ai_summary ? `\nPrevious AI analysis: ${e.ai_summ
       config: {
         systemInstruction: `You are an expert lab scientist AI copilot specializing in comparative experiment analysis. You identify root causes of success or failure by carefully examining differences between experimental runs. Be specific, cite numbers, and give actionable conclusions.`,
         maxOutputTokens: 8192,
+        // Disable thinking so 2.5-flash doesn't stream an empty comparison.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
+    let streamed = "";
     for await (const chunk of stream) {
       const text = chunk.text;
       if (text) {
+        streamed += text;
         res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
       }
     }
 
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    if (streamed.trim()) {
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: "The AI returned an empty comparison (it may be rate-limited). Please try again." })}\n\n`);
+    }
     return res.end();
   } catch (err) {
     req.log.error({ err }, "Failed to compare experiments");
