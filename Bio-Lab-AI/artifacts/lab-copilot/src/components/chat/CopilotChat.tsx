@@ -70,7 +70,10 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
         body: JSON.stringify({ content: userMessage }),
       });
 
-      if (!response.ok) throw new Error("Failed to send message");
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Failed to send message");
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader");
@@ -107,7 +110,7 @@ export function CopilotChat({ conversationId }: CopilotChatProps) {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setChatError("Couldn't reach the AI. Check your connection and try again.");
+      setChatError(error instanceof Error ? error.message : "Couldn't reach the AI. Check your connection and try again.");
     } finally {
       setIsStreaming(false);
       setAssistantBuffer("");

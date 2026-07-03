@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { eq, desc, sql, like, and, or, isNull } from "drizzle-orm";
 import { db, experiments, conversations, messages, experimentTemplates, recommendationActions, experimentComments, tasks } from "@workspace/db";
 import {
@@ -9,14 +9,138 @@ import {
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
 import { assayGuidanceBlock } from "../lib/assayKnowledge";
-import { getAuth } from "@clerk/express";
-import * as XLSX from "xlsx";
+import { getRequestUserId } from "../lib/requestUser";
+import { aiRateLimiter } from "../middlewares/rateLimit";
+import { assertMaxChars } from "../lib/requestLimits";
+import ExcelJS from "exceljs";
 
 const router: IRouter = Router();
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+const MAX_UPLOAD_BASE64_CHARS = Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 16;
+const MAX_WORKBOOK_ROWS = 512;
+const MAX_WORKBOOK_COLUMNS = 64;
+const MAX_TEXT_ROWS = 5_000;
+const MAX_TEXT_COLUMNS = 128;
+const MAX_CELL_CHARS = 500;
+const MAX_CONDITION_GROUPS = 100;
+const WELL_ID_RE = /^[A-H](?:[1-9]|1[0-2])$/;
+
+class UploadInputError extends Error {
+  constructor(message: string, readonly statusCode = 400) {
+    super(message);
+  }
+}
+
+function rejectInputError(res: Response, err: unknown): boolean {
+  if (err instanceof Error && err.message.includes("Maximum length")) {
+    res.status(413).json({ error: err.message });
+    return true;
+  }
+  return false;
+}
+
+function writeAiStreamError(res: Response, message = "AI request failed. Please try again."): void {
+  if (!res.headersSent) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+  }
+  res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+  res.end();
+}
+
+function formatWellList(value: unknown): string {
+  if (!Array.isArray(value)) return "none";
+  const wells = value
+    .map((well) => String(well).trim().toUpperCase())
+    .filter((well) => WELL_ID_RE.test(well))
+    .slice(0, 96);
+  return wells.length ? wells.join(", ") : "none";
+}
+
+function formatMetric(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "n/a";
+}
+
+function decodeUpload(b64: string, filename: string): Buffer {
+  if (b64.length > MAX_UPLOAD_BASE64_CHARS) {
+    throw new UploadInputError(`File too large. Maximum upload size is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`, 413);
+  }
+  const buffer = Buffer.from(b64, "base64");
+  if (buffer.byteLength > MAX_UPLOAD_BYTES) {
+    throw new UploadInputError(`File too large. Maximum upload size is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`, 413);
+  }
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (!ext || !["csv", "tsv", "txt", "xlsx"].includes(ext)) {
+    throw new UploadInputError("Unsupported file type. Upload CSV, TSV, TXT, or XLSX files.");
+  }
+  return buffer;
+}
+
+function clampCellString(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > MAX_CELL_CHARS ? trimmed.slice(0, MAX_CELL_CHARS) : trimmed;
+}
+
+function excelCellValue(value: ExcelJS.CellValue): unknown {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return clampCellString(value);
+  if (typeof value !== "object") return value;
+  if ("result" in value) return excelCellValue(value.result as ExcelJS.CellValue);
+  if ("text" in value && typeof value.text === "string") return clampCellString(value.text);
+  if ("richText" in value && Array.isArray(value.richText)) {
+    return clampCellString(value.richText.map((part) => part.text).join(""));
+  }
+  if ("hyperlink" in value && "text" in value && typeof value.text === "string") return clampCellString(value.text);
+  return clampCellString(String(value));
+}
+
+async function readFirstWorksheetRows(buffer: Buffer): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+  if (sheet.rowCount > MAX_WORKBOOK_ROWS || sheet.columnCount > MAX_WORKBOOK_COLUMNS) {
+    throw new UploadInputError(
+      `Workbook is too large. Maximum supported sheet size is ${MAX_WORKBOOK_ROWS} rows by ${MAX_WORKBOOK_COLUMNS} columns.`,
+      413,
+    );
+  }
+
+  const rows: unknown[][] = [];
+  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    const values: unknown[] = [];
+    for (let columnNumber = 1; columnNumber <= sheet.columnCount; columnNumber++) {
+      values.push(excelCellValue(row.getCell(columnNumber).value));
+    }
+    rows.push(values);
+  }
+  return rows;
+}
+
+async function findOwnedExperiment(experimentId: number, userId: string): Promise<typeof experiments.$inferSelect | null> {
+  if (!Number.isInteger(experimentId) || experimentId <= 0) return null;
+  const [experiment] = await db
+    .select()
+    .from(experiments)
+    .where(and(eq(experiments.id, experimentId), eq(experiments.user_id, userId)))
+    .limit(1);
+  return experiment ?? null;
+}
+
+function requestBody(reqBody: unknown): Record<string, unknown> {
+  return reqBody && typeof reqBody === "object" ? reqBody as Record<string, unknown> : {};
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 router.get("/experiments", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const query = ListExperimentsQueryParams.parse(req.query);
     const conditions = [eq(experiments.user_id, userId)];
     if (query.assay_type) conditions.push(eq(experiments.assay_type, query.assay_type));
@@ -46,7 +170,7 @@ router.get("/experiments", async (req, res) => {
 
 router.get("/experiments/dashboard", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
 
     const total = await db
       .select({ count: sql<number>`count(*)` })
@@ -108,8 +232,8 @@ router.get("/experiments/dashboard", async (req, res) => {
 
 router.get("/experiments/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const id = parseInt(req.params.id);
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
     const rows = await db.select().from(experiments)
       .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
       .limit(1);
@@ -124,12 +248,12 @@ router.get("/experiments/:id", async (req, res) => {
 
 router.post("/experiments", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const body = CreateExperimentBody.parse(req.body);
 
     let rawDataJson: string | null = null;
     if (body.file_content_b64 && body.file_name) {
-      rawDataJson = parseFileContent(body.file_content_b64, body.file_name);
+      rawDataJson = await parseFileContent(body.file_content_b64, body.file_name);
     }
 
     const inserted = await db
@@ -150,14 +274,17 @@ router.post("/experiments", async (req, res) => {
     return res.status(201).json(inserted[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to create experiment");
-    return res.status(400).json({ error: String(err) });
+    if (err instanceof UploadInputError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(400).json({ error: "Failed to create experiment" });
   }
 });
 
 router.put("/experiments/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const id = parseInt(req.params.id);
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
     const body = UpdateExperimentBody.parse(req.body);
 
     const updated = await db
@@ -171,13 +298,14 @@ router.put("/experiments/:id", async (req, res) => {
     }
     return res.json(updated[0]);
   } catch (err) {
-    return res.status(400).json({ error: String(err) });
+    req.log.error({ err }, "Failed to update experiment");
+    return res.status(400).json({ error: "Failed to update experiment" });
   }
 });
 
 router.delete("/experiments/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const id = parseInt(req.params.id);
     const deleted = await db.delete(experiments)
       .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
@@ -191,10 +319,10 @@ router.delete("/experiments/:id", async (req, res) => {
   }
 });
 
-router.post("/experiments/:id/data-analysis", async (req, res) => {
+router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const id = parseInt(req.params.id);
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
     const rows = await db.select().from(experiments)
       .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
       .limit(1);
@@ -295,13 +423,13 @@ ${relatedContext}`;
     return res.end();
   } catch (err) {
     req.log.error({ err }, "Failed to generate data analysis report");
-    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
-    return res.end();
+    writeAiStreamError(res);
+    return;
   }
 });
 
 router.get("/templates", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const rows = await db
     .select()
     .from(experimentTemplates)
@@ -311,7 +439,7 @@ router.get("/templates", async (req, res) => {
 });
 
 router.get("/templates/:id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.id);
   const rows = await db.select().from(experimentTemplates).where(eq(experimentTemplates.id, id)).limit(1);
   if (!rows[0]) return res.status(404).json({ error: "Template not found" });
@@ -321,24 +449,53 @@ router.get("/templates/:id", async (req, res) => {
 
 router.post("/templates", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const row = await db.insert(experimentTemplates).values({ ...req.body, user_id: userId }).returning();
+    const userId = getRequestUserId(req);
+    const body = requestBody(req.body);
+    const name = optionalString(body.name);
+    const assayType = optionalString(body.assay_type);
+    if (!name || !assayType) {
+      return res.status(400).json({ error: "name and assay_type are required" });
+    }
+    const row = await db.insert(experimentTemplates).values({
+      user_id: userId,
+      name,
+      assay_type: assayType,
+      instrument: optionalString(body.instrument) ?? "Synergy H1",
+      description: optionalString(body.description),
+      default_notes: optionalString(body.default_notes),
+      expected_columns_json: optionalString(body.expected_columns_json),
+      expected_control_rule: optionalString(body.expected_control_rule),
+      expected_status_default: optionalString(body.expected_status_default) ?? "in_progress",
+      ai_prompt_hint: optionalString(body.ai_prompt_hint),
+    }).returning();
     return res.status(201).json(row[0]);
   } catch (err) {
-    return res.status(400).json({ error: String(err) });
+    req.log.error({ err }, "Failed to create template");
+    return res.status(400).json({ error: "Failed to create template" });
   }
 });
 
 router.put("/templates/:id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.id);
-  const row = await db.update(experimentTemplates).set({ ...req.body, updated_at: new Date() }).where(and(eq(experimentTemplates.id, id), eq(experimentTemplates.user_id, userId))).returning();
+  const body = requestBody(req.body);
+  const patch: Partial<typeof experimentTemplates.$inferInsert> = { updated_at: new Date() };
+  if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
+  if (typeof body.assay_type === "string" && body.assay_type.trim()) patch.assay_type = body.assay_type.trim();
+  if (typeof body.instrument === "string" && body.instrument.trim()) patch.instrument = body.instrument.trim();
+  if (typeof body.description === "string") patch.description = body.description.trim() || null;
+  if (typeof body.default_notes === "string") patch.default_notes = body.default_notes.trim() || null;
+  if (typeof body.expected_columns_json === "string") patch.expected_columns_json = body.expected_columns_json.trim() || null;
+  if (typeof body.expected_control_rule === "string") patch.expected_control_rule = body.expected_control_rule.trim() || null;
+  if (typeof body.expected_status_default === "string" && body.expected_status_default.trim()) patch.expected_status_default = body.expected_status_default.trim();
+  if (typeof body.ai_prompt_hint === "string") patch.ai_prompt_hint = body.ai_prompt_hint.trim() || null;
+  const row = await db.update(experimentTemplates).set(patch).where(and(eq(experimentTemplates.id, id), eq(experimentTemplates.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Template not found" });
   return res.json(row[0]);
 });
 
 router.delete("/templates/:id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.id);
   const row = await db.delete(experimentTemplates).where(and(eq(experimentTemplates.id, id), eq(experimentTemplates.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Template not found" });
@@ -346,86 +503,114 @@ router.delete("/templates/:id", async (req, res) => {
 });
 
 router.get("/experiments/:id/recommendations/actions", async (req, res) => {
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
   const rows = await db.select().from(recommendationActions).where(eq(recommendationActions.experiment_id, experimentId)).orderBy(desc(recommendationActions.updated_at));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/experiments/:id/recommendations/:index/approve", async (req, res) => {
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
   const recommendationIndex = parseInt(req.params.index);
-  const [exp] = await db.select().from(experiments).where(eq(experiments.id, experimentId)).limit(1);
+  const exp = await findOwnedExperiment(experimentId, userId);
   if (!exp) return res.status(404).json({ error: "Experiment not found" });
   const suggestions = exp.ai_next_experiments_json ? JSON.parse(exp.ai_next_experiments_json) : [];
   const original = suggestions[recommendationIndex];
   if (!original) return res.status(404).json({ error: "Recommendation not found" });
+  const body = requestBody(req.body);
   const [row] = await db.insert(recommendationActions).values({
     experiment_id: experimentId,
     recommendation_index: recommendationIndex,
     recommendation_title: original.title ?? "Recommendation",
     original_recommendation_json: JSON.stringify(original),
     action_status: "approved",
-    reviewer_name: req.body?.reviewer_name ?? null,
-    reviewer_note: req.body?.reviewer_note ?? null,
+    reviewer_name: optionalString(body.reviewer_name),
+    reviewer_note: optionalString(body.reviewer_note),
   }).returning();
   return res.json(row);
 });
 
 router.post("/experiments/:id/recommendations/:index/reject", async (req, res) => {
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
   const recommendationIndex = parseInt(req.params.index);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
+  const body = requestBody(req.body);
   const [row] = await db.insert(recommendationActions).values({
     experiment_id: experimentId,
     recommendation_index: recommendationIndex,
-    recommendation_title: req.body?.title ?? "Recommendation",
-    original_recommendation_json: JSON.stringify(req.body?.original ?? {}),
+    recommendation_title: optionalString(body.title) ?? "Recommendation",
+    original_recommendation_json: JSON.stringify(body.original ?? {}),
     action_status: "rejected",
-    reviewer_name: req.body?.reviewer_name ?? null,
-    reviewer_note: req.body?.reviewer_note ?? null,
+    reviewer_name: optionalString(body.reviewer_name),
+    reviewer_note: optionalString(body.reviewer_note),
   }).returning();
   return res.json(row);
 });
 
 router.post("/experiments/:id/recommendations/:index/edit", async (req, res) => {
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
   const recommendationIndex = parseInt(req.params.index);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
+  const body = requestBody(req.body);
   const row = await db.insert(recommendationActions).values({
     experiment_id: experimentId,
     recommendation_index: recommendationIndex,
-    recommendation_title: req.body?.title,
-    original_recommendation_json: JSON.stringify(req.body?.original ?? {}),
+    recommendation_title: optionalString(body.title) ?? "Recommendation",
+    original_recommendation_json: JSON.stringify(body.original ?? {}),
     edited_recommendation_json: JSON.stringify({
-      title: req.body?.title,
-      variable_to_change: req.body?.variable_to_change,
-      rationale: req.body?.rationale,
-      expected_outcome: req.body?.expected_outcome,
-      confidence: req.body?.confidence,
+      title: optionalString(body.title),
+      variable_to_change: optionalString(body.variable_to_change),
+      rationale: optionalString(body.rationale),
+      expected_outcome: optionalString(body.expected_outcome),
+      confidence: optionalString(body.confidence),
     }),
     action_status: "edited",
-    reviewer_name: req.body?.reviewer_name ?? null,
-    reviewer_note: req.body?.reviewer_note ?? null,
+    reviewer_name: optionalString(body.reviewer_name),
+    reviewer_note: optionalString(body.reviewer_note),
   }).returning();
   return res.json(row[0]);
 });
 
 router.get("/experiments/:id/comments", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
   const rows = await db.select().from(experimentComments)
     .where(and(eq(experimentComments.experiment_id, experimentId), eq(experimentComments.user_id, userId)))
     .orderBy(desc(experimentComments.created_at));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/experiments/:id/comments", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
-  const row = await db.insert(experimentComments).values({ user_id: userId, experiment_id: experimentId, ...req.body }).returning();
-  res.status(201).json(row[0]);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
+  const body = requestBody(req.body);
+  const content = optionalString(body.content);
+  const authorName = optionalString(body.author_name);
+  if (!content || !authorName) return res.status(400).json({ error: "author_name and content are required" });
+  const row = await db.insert(experimentComments).values({
+    user_id: userId,
+    experiment_id: experimentId,
+    comment_type: optionalString(body.comment_type) ?? "note",
+    target_reference: optionalString(body.target_reference),
+    author_name: authorName,
+    content,
+  }).returning();
+  return res.status(201).json(row[0]);
 });
 
 router.delete("/comments/:comment_id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.comment_id);
   const row = await db.delete(experimentComments)
     .where(and(eq(experimentComments.id, id), eq(experimentComments.user_id, userId)))
@@ -435,14 +620,16 @@ router.delete("/comments/:comment_id", async (req, res) => {
 });
 
 router.get("/tasks", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const rows = await db.select().from(tasks).where(eq(tasks.user_id, userId)).orderBy(desc(tasks.created_at));
   return res.json(rows);
 });
 
 router.get("/experiments/:id/tasks", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const experimentId = parseInt(req.params.id);
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
   const rows = await db.select().from(tasks)
     .where(and(eq(tasks.experiment_id, experimentId), eq(tasks.user_id, userId)))
     .orderBy(desc(tasks.created_at));
@@ -450,15 +637,49 @@ router.get("/experiments/:id/tasks", async (req, res) => {
 });
 
 router.post("/tasks", async (req, res) => {
-  const userId = getAuth(req).userId!;
-  const row = await db.insert(tasks).values({ ...req.body, user_id: userId }).returning();
+  const userId = getRequestUserId(req);
+  const body = requestBody(req.body);
+  const experimentId = Number(body.experiment_id);
+  if (!Number.isInteger(experimentId)) return res.status(400).json({ error: "experiment_id is required" });
+  const exp = await findOwnedExperiment(experimentId, userId);
+  if (!exp) return res.status(404).json({ error: "Experiment not found" });
+  const title = optionalString(body.title);
+  if (!title) return res.status(400).json({ error: "title is required" });
+  const row = await db.insert(tasks).values({
+    user_id: userId,
+    experiment_id: experimentId,
+    source_recommendation_index: typeof body.source_recommendation_index === "number" ? body.source_recommendation_index : null,
+    title,
+    description: optionalString(body.description),
+    owner_name: optionalString(body.owner_name),
+    due_date: optionalString(body.due_date),
+    status: optionalString(body.status) ?? "todo",
+    priority: optionalString(body.priority) ?? "medium",
+  }).returning();
   return res.status(201).json(row[0]);
 });
 
 router.put("/tasks/:id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.id);
-  const row = await db.update(tasks).set({ ...req.body, updated_at: new Date() })
+  const body = requestBody(req.body);
+  const patch: Record<string, unknown> = { updated_at: new Date() };
+  if (typeof body.experiment_id !== "undefined") {
+    const experimentId = Number(body.experiment_id);
+    if (!Number.isInteger(experimentId)) return res.status(400).json({ error: "experiment_id must be a number" });
+    const exp = await findOwnedExperiment(experimentId, userId);
+    if (!exp) return res.status(404).json({ error: "Experiment not found" });
+    patch.experiment_id = experimentId;
+  }
+  if (typeof body.source_recommendation_index === "number") patch.source_recommendation_index = body.source_recommendation_index;
+  if (typeof body.title === "string" && body.title.trim()) patch.title = body.title.trim();
+  if (typeof body.description === "string") patch.description = body.description.trim() || null;
+  if (typeof body.owner_name === "string") patch.owner_name = body.owner_name.trim() || null;
+  if (typeof body.due_date === "string") patch.due_date = body.due_date.trim() || null;
+  if (typeof body.status === "string" && body.status.trim()) patch.status = body.status.trim();
+  if (typeof body.priority === "string" && body.priority.trim()) patch.priority = body.priority.trim();
+
+  const row = await db.update(tasks).set(patch)
     .where(and(eq(tasks.id, id), eq(tasks.user_id, userId)))
     .returning();
   if (!row[0]) return res.status(404).json({ error: "Task not found" });
@@ -466,17 +687,17 @@ router.put("/tasks/:id", async (req, res) => {
 });
 
 router.delete("/tasks/:id", async (req, res) => {
-  const userId = getAuth(req).userId!;
+  const userId = getRequestUserId(req);
   const id = parseInt(req.params.id);
   const row = await db.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.user_id, userId))).returning();
   if (!row[0]) return res.status(404).json({ error: "Task not found" });
   return res.status(204).send();
 });
 
-router.post("/experiments/:id/analyze", async (req, res) => {
+router.post("/experiments/:id/analyze", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const id = parseInt(req.params.id);
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
     const bodyParsed = req.body && Object.keys(req.body).length > 0
       ? AnalyzeExperimentBody.parse(req.body)
       : {};
@@ -503,9 +724,14 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       ? `\nRelated experiments:\n${related.map((r) => `- ${r.name} (${r.date}, status: ${r.status})`).join("\n")}`
       : "\nNo related experiments found.";
 
-    const focusNote = bodyParsed.focus_question
-      ? `\nFocus question: ${bodyParsed.focus_question}`
-      : "";
+    let focusQuestion = "";
+    try {
+      focusQuestion = bodyParsed.focus_question ? assertMaxChars(bodyParsed.focus_question, "Focus question") : "";
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
+    const focusNote = focusQuestion ? `\nFocus question: ${focusQuestion}` : "";
 
     // The client sends the scientist's plate layout (marked control wells) so the
     // AI quantifies off the real plate map instead of guessing which wells are controls.
@@ -514,10 +740,10 @@ router.post("/experiments/:id/analyze", async (req, res) => {
       : undefined;
     const controlsBlock = cs
       ? `\n\nUSER-DESIGNATED CONTROLS (ground truth from the scientist's plate layout — use these EXACT wells for normalization and Z'; do NOT guess which wells are controls):
-- Positive control wells: ${(cs.positive_control_wells as string[] | undefined)?.join(", ") || "none"}
-- Negative control wells: ${(cs.negative_control_wells as string[] | undefined)?.join(", ") || "none"}
-- Blank wells: ${(cs.blank_wells as string[] | undefined)?.join(", ") || "none"}
-- Already computed from these controls: mean(+)=${cs.mean_positive ?? "n/a"}, mean(−)=${cs.mean_negative ?? "n/a"}, Z'=${cs.zprime ?? "n/a"}, signal:background=${cs.signal_to_background ?? "n/a"}.
+- Positive control wells: ${formatWellList(cs.positive_control_wells)}
+- Negative control wells: ${formatWellList(cs.negative_control_wells)}
+- Blank wells: ${formatWellList(cs.blank_wells)}
+- Already computed from these controls: mean(+)=${formatMetric(cs.mean_positive)}, mean(−)=${formatMetric(cs.mean_negative)}, Z'=${formatMetric(cs.zprime)}, signal:background=${formatMetric(cs.signal_to_background)}.
 Normalize sample wells to % of control using these control means, and report this Z' as the plate-quality metric.`
       : "";
 
@@ -603,7 +829,7 @@ Respond in this exact JSON format:
       await db
         .update(experiments)
         .set({ conversation_id: convId, updated_at: new Date() })
-        .where(eq(experiments.id, id));
+        .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
     }
 
     // Save AI summary and suggestions
@@ -614,7 +840,7 @@ Respond in this exact JSON format:
         ai_next_experiments_json: JSON.stringify(parsed.suggestions),
         updated_at: new Date(),
       })
-      .where(eq(experiments.id, id));
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
 
     // Save as assistant message in conversation
     await db.insert(messages).values({
@@ -630,18 +856,25 @@ Respond in this exact JSON format:
     });
   } catch (err) {
     req.log.error({ err }, "Failed to analyze experiment");
-    return res.status(500).json({ error: String(err) });
+    return res.status(500).json({ error: "Failed to analyze experiment" });
   }
 });
 
-router.post("/experiments/compare", async (req, res) => {
+router.post("/experiments/compare", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const { experiment_a_id, experiment_b_id, question } = req.body as {
       experiment_a_id: number;
       experiment_b_id: number;
       question?: string;
     };
+    let safeQuestion: string | undefined;
+    try {
+      safeQuestion = question ? assertMaxChars(question, "Comparison question") : undefined;
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
 
     if (!experiment_a_id || !experiment_b_id) {
       return res.status(400).json({ error: "Both experiment_a_id and experiment_b_id are required" });
@@ -663,8 +896,8 @@ router.post("/experiments/compare", async (req, res) => {
 Date: ${e.date} | Assay: ${e.assay_type} | Instrument: ${e.instrument} | Status: ${e.status}
 Notes: ${e.notes ?? "None"}${e.ai_summary ? `\nPrevious AI analysis: ${e.ai_summary}` : ""}${e.raw_data_json ? `\nData: ${e.raw_data_json.substring(0, 800)}` : ""}`;
 
-    const userPrompt = question
-      ? `The scientist asks: "${question}"\n\nPlease answer using the two experiments below as context.\n\n${formatExp(a, "Experiment A")}\n\n${formatExp(b, "Experiment B")}`
+    const userPrompt = safeQuestion
+      ? `The scientist asks: "${safeQuestion}"\n\nPlease answer using the two experiments below as context.\n\n${formatExp(a, "Experiment A")}\n\n${formatExp(b, "Experiment B")}`
       : `Compare these two experiments in detail. Cover:\n1. What was different between them (conditions, protocol, timing)\n2. Why one succeeded / failed vs the other\n3. Key lessons learned from the comparison\n4. Concrete recommendations for the next experiment based on both runs\n\n${formatExp(a, "Experiment A")}\n\n${formatExp(b, "Experiment B")}`;
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -699,8 +932,8 @@ Notes: ${e.notes ?? "None"}${e.ai_summary ? `\nPrevious AI analysis: ${e.ai_summ
     return res.end();
   } catch (err) {
     req.log.error({ err }, "Failed to compare experiments");
-    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
-    return res.end();
+    writeAiStreamError(res);
+    return;
   }
 });
 
@@ -715,24 +948,18 @@ router.post("/experiments/parse-synergy", async (req, res) => {
       return res.status(400).json({ error: "file_content_b64 and file_name are required" });
     }
 
-    const buffer = Buffer.from(file_content_b64, "base64");
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) return res.status(400).json({ error: "No sheets found in workbook" });
-
-    const sheet = workbook.Sheets[sheetName];
-    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      raw: true,
-      defval: null,
-    });
+    const buffer = decodeUpload(file_content_b64, file_name);
+    const rows = await readFirstWorksheetRows(buffer);
+    if (!rows.length) return res.status(400).json({ error: "No rows found in workbook" });
 
     const result = parseSynergyH1Rows(rows, file_name);
     return res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to parse Synergy H1 file");
-    return res.status(500).json({ error: String(err) });
+    if (err instanceof UploadInputError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(400).json({ error: "Could not parse uploaded file. Please upload a valid CSV, TSV, TXT, or XLSX export." });
   }
 });
 
@@ -780,7 +1007,7 @@ function parseSynergyH1Rows(rows: unknown[][], filename: string): PlateParseResu
     read_type: null as string | null,
   };
 
-  const strVal = (v: unknown): string => (v != null ? String(v).trim() : "");
+  const strVal = (v: unknown): string => (v != null ? clampCellString(String(v)) : "");
 
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
@@ -923,27 +1150,32 @@ function parseSynergyH1Rows(rows: unknown[][], filename: string): PlateParseResu
   };
 }
 
-function parseFileContent(b64: string, filename: string): string {
+async function parseFileContent(b64: string, filename: string): Promise<string> {
   try {
     const ext = filename.split(".").pop()?.toLowerCase();
-    if (ext === "xlsx" || ext === "xls") {
-      const buffer = Buffer.from(b64, "base64");
-      const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) return JSON.stringify({ error: "No sheets found", filename });
-      const sheet = workbook.Sheets[sheetName];
-      const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+    const buffer = decodeUpload(b64, filename);
+    if (ext === "xlsx") {
+      const rows = await readFirstWorksheetRows(buffer);
+      if (!rows.length) return JSON.stringify({ error: "No rows found", filename });
       const result = parseSynergyH1Rows(rows, filename);
       return JSON.stringify({ ...result, _type: "plate96" });
     }
 
-    const content = Buffer.from(b64, "base64").toString("utf-8");
-    const lines = content.split("\n").filter((l) => l.trim());
+    const content = buffer.toString("utf-8");
+    const lines = content.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length > MAX_TEXT_ROWS + 1) {
+      throw new UploadInputError(`Text file has too many rows. Maximum supported row count is ${MAX_TEXT_ROWS}.`, 413);
+    }
     if (lines.length < 2) return JSON.stringify({ error: "File too short", rows: 0 });
 
-    const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
+    const delimiter = ext === "tsv" ? "\t" : ",";
+    const headerCells = lines[0].split(delimiter);
+    if (headerCells.length > MAX_TEXT_COLUMNS) {
+      throw new UploadInputError(`Text file has too many columns. Maximum supported column count is ${MAX_TEXT_COLUMNS}.`, 413);
+    }
+    const headers = headerCells.map((h) => clampCellString(h.replace(/"/g, "")));
     const rows = lines.slice(1).map((line) => {
-      const vals = line.split(",").map((v) => v.trim().replace(/"/g, ""));
+      const vals = line.split(delimiter).slice(0, headers.length).map((v) => clampCellString(v.replace(/"/g, "")));
       return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ""]));
     });
 
@@ -958,29 +1190,34 @@ function parseFileContent(b64: string, filename: string): string {
 
     if (signalKey) {
       const signals = rows.map((r) => parseFloat(r[signalKey] ?? "0")).filter((n) => !isNaN(n));
-      const mean = signals.reduce((a, b) => a + b, 0) / signals.length;
-      const sd = Math.sqrt(signals.reduce((a, b) => a + (b - mean) ** 2, 0) / signals.length);
-      summary.signal_stats = { mean: mean.toFixed(4), sd: sd.toFixed(4), n: signals.length };
+      if (signals.length > 0) {
+        const mean = signals.reduce((a, b) => a + b, 0) / signals.length;
+        const sd = Math.sqrt(signals.reduce((a, b) => a + (b - mean) ** 2, 0) / signals.length);
+        summary.signal_stats = { mean: mean.toFixed(4), sd: sd.toFixed(4), n: signals.length };
+      }
     }
 
     if (conditionKey) {
       const groups: Record<string, number[]> = {};
       for (const row of rows) {
-        const cond = row[conditionKey] ?? "Unknown";
+        const cond = clampCellString(row[conditionKey] ?? "Unknown");
+        if (!groups[cond] && Object.keys(groups).length >= MAX_CONDITION_GROUPS) continue;
         if (!groups[cond]) groups[cond] = [];
         if (signalKey && !isNaN(parseFloat(row[signalKey] ?? ""))) {
           groups[cond].push(parseFloat(row[signalKey]));
         }
       }
       summary.condition_groups = Object.entries(groups).map(([cond, vals]) => {
+        if (!vals.length) return { condition: cond, n: 0, mean: null };
         const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
         return { condition: cond, n: vals.length, mean: mean.toFixed(4) };
       });
     }
 
     return JSON.stringify(summary);
-  } catch {
-    return JSON.stringify({ error: "Failed to parse file", filename });
+  } catch (err) {
+    if (err instanceof UploadInputError) throw err;
+    return JSON.stringify({ error: "Failed to parse file", filename: clampCellString(filename) });
   }
 }
 

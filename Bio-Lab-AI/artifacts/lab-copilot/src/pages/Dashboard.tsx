@@ -31,14 +31,14 @@ const steps = [
     color: "text-violet-400",
     bg: "bg-violet-400/10",
     title: "AI analyzes the results",
-    body: "Gemini 2.5 reads your raw data, calculates statistics, flags anomalies, and writes a plain-language summary.",
+    body: "Gemini reads your parsed data, calculates statistics, flags anomalies, and writes a plain-language summary.",
   },
   {
     icon: Sparkles,
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
     title: "Get actionable next steps",
-    body: "Your copilot remembers every experiment and learns your research direction — then tells you exactly what to run next.",
+    body: "Your copilot uses experiment history and project context to suggest practical follow-up work.",
   },
 ];
 
@@ -69,7 +69,7 @@ function OnboardingEmptyState() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
         >
-          Your lab's second brain starts here
+          Start with a clean experiment record
         </motion.h1>
 
         <motion.p
@@ -78,8 +78,8 @@ function OnboardingEmptyState() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          Bioalyzer remembers every experiment, quantifies your data across instruments,
-          and tells you what to run next — so you spend less time in spreadsheets and more time discovering.
+          Upload a plate export or log a run, then keep the protocol, raw data,
+          AI review, and next actions together from the start.
         </motion.p>
       </div>
 
@@ -162,6 +162,84 @@ function AnimatedCounter({ value }: { value: number }) {
   return <motion.span>{displayValue}</motion.span>;
 }
 
+function LabPulsePanel({
+  successRate,
+  activeRuns,
+  latestRun,
+}: {
+  successRate: number;
+  activeRuns: number;
+  latestRun: string;
+}) {
+  const bars = [34, 58, 44, 78, 62, 91, 49, 72, 55, 84, 67, 96, 53, 76];
+
+  return (
+    <motion.div
+      className="surface-panel rounded-lg p-5"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+    >
+      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-emerald-500">
+              Lab pulse live
+            </span>
+            <span>Latest run: {latestRun}</span>
+          </div>
+          <h1 className="mt-4 text-3xl font-semibold tracking-normal md:text-4xl">
+            Your experiment trail is ready for review.
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Track what changed, where quality slipped, and which result deserves the next follow-up.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Success rate", value: `${successRate}%`, tone: "text-emerald-500" },
+              { label: "Active runs", value: activeRuns.toString(), tone: "text-cyan-500" },
+              { label: "AI context", value: "Synced", tone: "text-amber-500" },
+            ].map((item) => (
+              <div key={item.label} className="rounded-md border border-border/70 bg-background/55 p-3">
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className={`mt-1 font-mono text-2xl font-semibold ${item.tone}`}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="lab-scan rounded-lg border border-border/70 bg-background/55 p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Assay signal</span>
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="flex h-32 items-end gap-2">
+            {bars.map((height, index) => (
+              <span
+                key={index}
+                className={`animated-bar flex-1 rounded-t-sm ${
+                  index % 7 === 0 ? "bg-amber-400" : index % 5 === 0 ? "bg-rose-400" : "bg-primary"
+                }`}
+                style={{ height: `${height}%`, animationDelay: `${index * 0.09}s` }}
+              />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-8 gap-1">
+            {Array.from({ length: 32 }, (_, index) => (
+              <span
+                key={index}
+                className={`h-2 rounded-full ${
+                  index % 13 === 0 ? "bg-amber-400" : index % 9 === 0 ? "bg-rose-400" : "bg-emerald-400"
+                } ${index % 6 === 0 ? "well-pulse" : ""}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export function Dashboard() {
   const { data: dashboard, isLoading, refetch } = useGetDashboard({
     query: { queryKey: getGetDashboardQueryKey() }
@@ -208,11 +286,17 @@ export function Dashboard() {
     return <OnboardingEmptyState />;
   }
 
+  const successRate = dashboard.total_experiments > 0 ? Math.round(((dashboard.by_status['success'] || 0) / dashboard.total_experiments) * 100) : 0;
+  const activeRuns = dashboard.by_status['in_progress'] || 0;
+  const latestRun = dashboard.recent_experiments[0]?.name ?? "No recent run";
+
   return (
     <div className="space-y-6">
+      <LabPulsePanel successRate={successRate} activeRuns={activeRuns} latestRun={latestRun} />
+
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <h2 className="text-2xl font-semibold tracking-normal">Run Metrics</h2>
           <p className="text-sm text-muted-foreground mt-1">Good {greeting} — here’s your lab snapshot.</p>
         </div>
         <Badge variant="outline" className="font-mono">Personalized</Badge>
@@ -229,7 +313,7 @@ export function Dashboard() {
           },
           {
             title: "Success Rate",
-            value: dashboard.total_experiments > 0 ? Math.round(((dashboard.by_status['success'] || 0) / dashboard.total_experiments) * 100) : 0,
+            value: successRate,
             icon: CheckCircle2,
             color: "text-emerald-400",
             sub: `${dashboard.by_status['success'] || 0} successful`,

@@ -1,14 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db, projects, experiments, projectDocuments } from "@workspace/db";
-import { getAuth } from "@clerk/express";
+import { getRequestUserId } from "../lib/requestUser";
 
 const router: IRouter = Router();
 
 // ── list the user's projects (with experiment counts) ──
 router.get("/projects", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const rows = await db
       .select({
         id: projects.id,
@@ -35,7 +35,7 @@ router.get("/projects", async (req, res) => {
 // ── create a project ──
 router.post("/projects", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const { name, goal, status } = (req.body ?? {}) as { name?: unknown; goal?: unknown; status?: unknown };
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ error: "A project name is required" });
@@ -52,14 +52,14 @@ router.post("/projects", async (req, res) => {
     return res.status(201).json(inserted[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to create project");
-    return res.status(400).json({ error: String(err) });
+    return res.status(400).json({ error: "Failed to create project" });
   }
 });
 
 // ── get one project + the experiments in it ──
 router.get("/projects/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const id = parseInt(req.params.id, 10);
     const rows = await db
       .select()
@@ -93,7 +93,7 @@ router.get("/projects/:id", async (req, res) => {
 // ── update a project (name / goal / status) ──
 router.put("/projects/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const id = parseInt(req.params.id, 10);
     const { name, goal, status } = (req.body ?? {}) as { name?: unknown; goal?: unknown; status?: unknown };
 
@@ -113,7 +113,7 @@ router.put("/projects/:id", async (req, res) => {
     return res.json(updated[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to update project");
-    return res.status(400).json({ error: String(err) });
+    return res.status(400).json({ error: "Failed to update project" });
   }
 });
 
@@ -122,7 +122,7 @@ router.put("/projects/:id", async (req, res) => {
 // don't need to regen UpdateExperimentBody just to carry one field.
 router.put("/experiments/:id/project", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const expId = parseInt(req.params.id, 10);
     const { project_id } = (req.body ?? {}) as { project_id?: unknown };
 
@@ -154,7 +154,7 @@ router.put("/experiments/:id/project", async (req, res) => {
     return res.json(updated[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to assign experiment to project");
-    return res.status(400).json({ error: String(err) });
+    return res.status(400).json({ error: "Failed to assign experiment to project" });
   }
 });
 
@@ -172,7 +172,7 @@ async function userOwnsProject(projectId: number, userId: string): Promise<boole
 
 router.get("/projects/:id/documents", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const projectId = parseInt(req.params.id, 10);
     if (!(await userOwnsProject(projectId, userId))) {
       return res.status(404).json({ error: "Project not found" });
@@ -196,7 +196,7 @@ router.get("/projects/:id/documents", async (req, res) => {
 
 router.post("/projects/:id/documents", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const projectId = parseInt(req.params.id, 10);
     const { name, content } = (req.body ?? {}) as { name?: unknown; content?: unknown };
     if (typeof name !== "string" || !name.trim()) {
@@ -218,13 +218,13 @@ router.post("/projects/:id/documents", async (req, res) => {
     return res.status(201).json(inserted[0]);
   } catch (err) {
     req.log.error({ err }, "Failed to add project document");
-    return res.status(400).json({ error: String(err) });
+    return res.status(400).json({ error: "Failed to add project document" });
   }
 });
 
 router.delete("/project-documents/:docId", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const docId = parseInt(req.params.docId, 10);
     const deleted = await db
       .delete(projectDocuments)
@@ -242,7 +242,7 @@ router.delete("/project-documents/:docId", async (req, res) => {
 // ── delete a project (its experiments survive; project_id is set NULL by FK) ──
 router.delete("/projects/:id", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const id = parseInt(req.params.id, 10);
     const deleted = await db
       .delete(projects)

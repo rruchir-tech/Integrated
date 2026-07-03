@@ -56,10 +56,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PanelGroup direction="horizontal" className="h-screen w-full bg-background overflow-hidden">
-      <Panel defaultSize={18} minSize={12} maxSize={30} className="flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border relative">
+    <PanelGroup direction="horizontal" className="h-screen w-full overflow-hidden bg-background app-noise">
+      <Panel defaultSize={20} minSize={18} maxSize={30} className="relative flex min-w-[220px] max-w-[320px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.04),transparent_28%,rgba(0,0,0,.18))]" />
         <div className="h-14 flex items-center px-4 font-semibold text-lg border-b border-sidebar-border gap-2 relative z-10">
-          <Atom className="h-5 w-5 text-sidebar-primary" />
+          <motion.div
+            className="relative"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+          >
+            <Atom className="h-5 w-5 text-sidebar-primary" />
+          </motion.div>
           <span className="tracking-wide">Bioalyzer</span>
         </div>
 
@@ -198,7 +205,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
         
-        <div className="p-4 border-t border-sidebar-border mt-auto relative z-10 flex justify-end items-center">
+        <div className="p-4 border-t border-sidebar-border mt-auto relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/45">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.9)]" />
+            Workspace online
+          </div>
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             className="p-2 rounded-full hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
@@ -217,7 +228,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <PanelResizeHandle className="w-1 bg-sidebar-border hover:bg-primary/60 transition-colors cursor-col-resize relative group">
         <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/20 dark:group- transition-all" />
       </PanelResizeHandle>
-      <Panel className="flex flex-col min-w-0 overflow-hidden bg-background">
+      <Panel className="flex flex-col min-w-0 overflow-hidden bg-background/95">
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center justify-between px-6 md:px-8 py-2 max-w-7xl mx-auto w-full gap-4">

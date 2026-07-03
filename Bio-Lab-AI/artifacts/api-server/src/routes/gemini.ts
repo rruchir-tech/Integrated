@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import { db, conversations, messages, experiments, projects, projectDocuments } from "@workspace/db";
 import {
@@ -8,7 +8,9 @@ import {
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
 import { assayGuidanceBlock } from "../lib/assayKnowledge";
-import { getAuth } from "@clerk/express";
+import { getRequestUserId } from "../lib/requestUser";
+import { aiRateLimiter } from "../middlewares/rateLimit";
+import { assertMaxChars } from "../lib/requestLimits";
 
 const router: IRouter = Router();
 
@@ -38,9 +40,27 @@ function buildLabHistory(experimentRows: ExperimentRow[]): string {
     .join("\n");
 }
 
+function rejectInputError(res: Response, err: unknown): boolean {
+  if (err instanceof Error && err.message.includes("Maximum length")) {
+    res.status(413).json({ error: err.message });
+    return true;
+  }
+  return false;
+}
+
+function writeAiStreamError(res: Response, message = "AI request failed. Please try again."): void {
+  if (!res.headersSent) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+  }
+  res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+  res.end();
+}
+
 router.get("/gemini/conversations", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const query = ListGeminiConversationsQueryParams.parse(req.query);
     let rows: ConversationRow[] = [];
     if (query.experiment_id) {
@@ -53,7 +73,7 @@ router.get("/gemini/conversations", async (req, res) => {
         rows = await db
           .select()
           .from(conversations)
-          .where(eq(conversations.id, exp[0].conversation_id))
+          .where(and(eq(conversations.id, exp[0].conversation_id), eq(conversations.user_id, userId)))
           .orderBy(desc(conversations.createdAt));
       }
     } else {
@@ -75,14 +95,27 @@ router.get("/gemini/conversations", async (req, res) => {
 
     res.json(rows.map((c) => ({ ...c, experimentId: convToExpMap[c.id] ?? null })));
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    req.log.error({ err }, "Failed to list Gemini conversations");
+    res.status(500).json({ error: "Failed to list conversations" });
   }
 });
 
 router.post("/gemini/conversations", async (req, res) => {
   try {
     const body = CreateGeminiConversationBody.parse(req.body);
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
+    if (body.experimentId) {
+      const ownedExperiment = await db
+        .select({ id: experiments.id })
+        .from(experiments)
+        .where(and(eq(experiments.id, body.experimentId), eq(experiments.user_id, userId)))
+        .limit(1);
+      if (!ownedExperiment[0]) {
+        res.status(404).json({ error: "Experiment not found" });
+        return;
+      }
+    }
+
     const inserted = await db.insert(conversations).values({ title: body.title, user_id: userId }).returning();
     const conv = inserted[0];
     if (!conv) {
@@ -94,27 +127,28 @@ router.post("/gemini/conversations", async (req, res) => {
       await db
         .update(experiments)
         .set({ conversation_id: conv.id, updated_at: new Date() })
-        .where(eq(experiments.id, body.experimentId));
+        .where(and(eq(experiments.id, body.experimentId), eq(experiments.user_id, userId)));
     }
 
     const expRows = await db
       .select({ id: experiments.id })
       .from(experiments)
-      .where(eq(experiments.conversation_id, conv.id))
+      .where(and(eq(experiments.conversation_id, conv.id), eq(experiments.user_id, userId)))
       .limit(1);
 
     res.status(201).json({ ...conv, experimentId: expRows[0]?.id ?? body.experimentId ?? null });
   } catch (err) {
-    res.status(400).json({ error: String(err) });
+    req.log.error({ err }, "Failed to create Gemini conversation");
+    res.status(400).json({ error: "Failed to create conversation" });
   }
 });
 
 router.get("/gemini/conversations/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const userId = getAuth(req).userId!;
-    const rows = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
-    if (!rows[0] || rows[0].user_id !== userId) {
+    const userId = getRequestUserId(req);
+    const rows = await db.select().from(conversations).where(and(eq(conversations.id, id), eq(conversations.user_id, userId))).limit(1);
+    if (!rows[0]) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
@@ -128,19 +162,20 @@ router.get("/gemini/conversations/:id", async (req, res) => {
     const expRows = await db
       .select({ id: experiments.id })
       .from(experiments)
-      .where(eq(experiments.conversation_id, id))
+      .where(and(eq(experiments.conversation_id, id), eq(experiments.user_id, userId)))
       .limit(1);
 
     res.json({ ...rows[0], experimentId: expRows[0]?.id ?? null, messages: msgs });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    req.log.error({ err }, "Failed to get Gemini conversation");
+    res.status(500).json({ error: "Failed to get conversation" });
   }
 });
 
 router.delete("/gemini/conversations/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const deleted = await db.delete(conversations).where(and(eq(conversations.id, id), eq(conversations.user_id, userId))).returning();
     if (!deleted[0]) {
       res.status(404).json({ error: "Not found" });
@@ -148,20 +183,21 @@ router.delete("/gemini/conversations/:id", async (req, res) => {
     }
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    req.log.error({ err }, "Failed to delete Gemini conversation");
+    res.status(500).json({ error: "Failed to delete conversation" });
   }
 });
 
 router.get("/gemini/conversations/:id/messages", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const owner = await db
       .select({ user_id: conversations.user_id })
       .from(conversations)
-      .where(eq(conversations.id, id))
+      .where(and(eq(conversations.id, id), eq(conversations.user_id, userId)))
       .limit(1);
-    if (!owner[0] || owner[0].user_id !== userId) {
+    if (!owner[0]) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
@@ -172,33 +208,42 @@ router.get("/gemini/conversations/:id/messages", async (req, res) => {
       .orderBy(messages.createdAt);
     res.json(msgs);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    req.log.error({ err }, "Failed to list Gemini messages");
+    res.status(500).json({ error: "Failed to list messages" });
   }
 });
 
-router.post("/gemini/conversations/:id/messages", async (req, res) => {
+router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res) => {
   try {
-    const convId = parseInt(req.params.id);
+    const convId = parseInt(String(req.params.id), 10);
+    const userId = getRequestUserId(req);
     const body = SendGeminiMessageBody.parse(req.body);
+    let content: string;
+    try {
+      content = assertMaxChars(body.content, "Message");
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
 
     const conv = await db
       .select()
       .from(conversations)
-      .where(eq(conversations.id, convId))
+      .where(and(eq(conversations.id, convId), eq(conversations.user_id, userId)))
       .limit(1);
-    if (!conv[0] || conv[0].user_id !== getAuth(req).userId!) {
+    if (!conv[0]) {
       res.status(404).json({ error: "Conversation not found" });
       return;
     }
 
     await db
       .insert(messages)
-      .values({ conversationId: convId, role: "user", content: body.content });
+      .values({ conversationId: convId, role: "user", content });
 
     const expRows = await db
       .select()
       .from(experiments)
-      .where(eq(experiments.conversation_id, convId))
+      .where(and(eq(experiments.conversation_id, convId), eq(experiments.user_id, userId)))
       .limit(1);
     const exp = expRows[0];
 
@@ -208,7 +253,6 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
       .where(eq(messages.conversationId, convId))
       .orderBy(messages.createdAt);
 
-    const userId = getAuth(req).userId!;
     const allExperiments = await db
       .select()
       .from(experiments)
@@ -219,7 +263,7 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
     if (exp) {
       systemInstruction += `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}`;
     }
-    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${body.content}`;
+    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -266,8 +310,8 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
     }
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
-    res.end();
+    req.log.error({ err }, "Failed to send Gemini message");
+    writeAiStreamError(res);
   }
 });
 
@@ -278,14 +322,14 @@ router.post("/gemini/conversations/:id/messages", async (req, res) => {
 
 router.get("/projects/:id/messages", async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const projectId = parseInt(req.params.id, 10);
+    const userId = getRequestUserId(req);
+    const projectId = parseInt(String(req.params.id), 10);
     const proj = await db
       .select({ user_id: projects.user_id, conversation_id: projects.conversation_id })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), eq(projects.user_id, userId)))
       .limit(1);
-    if (!proj[0] || proj[0].user_id !== userId) {
+    if (!proj[0]) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -300,23 +344,31 @@ router.get("/projects/:id/messages", async (req, res) => {
       .orderBy(messages.createdAt);
     res.json(msgs);
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    req.log.error({ err }, "Failed to list project copilot messages");
+    res.status(500).json({ error: "Failed to list project messages" });
   }
 });
 
-router.post("/projects/:id/chat", async (req, res) => {
+router.post("/projects/:id/chat", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const projectId = parseInt(req.params.id, 10);
+    const userId = getRequestUserId(req);
+    const projectId = parseInt(String(req.params.id), 10);
     const { content } = (req.body ?? {}) as { content?: unknown };
     if (typeof content !== "string" || !content.trim()) {
       res.status(400).json({ error: "content is required" });
       return;
     }
+    let messageContent: string;
+    try {
+      messageContent = assertMaxChars(content, "Message");
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
 
-    const projRows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    const projRows = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.user_id, userId))).limit(1);
     const proj = projRows[0];
-    if (!proj || proj.user_id !== userId) {
+    if (!proj) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -329,10 +381,10 @@ router.post("/projects/:id/chat", async (req, res) => {
         .values({ title: `Project: ${proj.name}`, user_id: userId })
         .returning();
       convId = inserted[0]!.id;
-      await db.update(projects).set({ conversation_id: convId, updated_at: new Date() }).where(eq(projects.id, projectId));
+      await db.update(projects).set({ conversation_id: convId, updated_at: new Date() }).where(and(eq(projects.id, projectId), eq(projects.user_id, userId)));
     }
 
-    await db.insert(messages).values({ conversationId: convId, role: "user", content });
+    await db.insert(messages).values({ conversationId: convId, role: "user", content: messageContent });
 
     // Ground the AI in the project's goal + every experiment in THIS project.
     const projExperiments = await db
@@ -376,7 +428,7 @@ router.post("/projects/:id/chat", async (req, res) => {
       `${PROJECT_SYSTEM_PROMPT}\n\nPROJECT: ${proj.name}\nGOAL: ${proj.goal ?? "(not specified)"}\n\n` +
       `EXPERIMENTS IN THIS PROJECT:\n${projExperiments.length ? buildLabHistory(projExperiments) : "(none logged yet)"}` +
       docsContext +
-      `\n\nSCIENTIST QUESTION: ${content}`;
+      `\n\nSCIENTIST QUESTION: ${messageContent}`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -416,20 +468,20 @@ router.post("/projects/:id/chat", async (req, res) => {
     }
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
-    res.end();
+    req.log.error({ err }, "Failed to run project chat");
+    writeAiStreamError(res);
   }
 });
 
 // Synthesize a "state of the project" across all its experiments + context docs,
 // saved to projects.ai_summary. Returns JSON (not streamed).
-router.post("/projects/:id/synthesize", async (req, res) => {
+router.post("/projects/:id/synthesize", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const projectId = parseInt(req.params.id, 10);
-    const projRows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    const userId = getRequestUserId(req);
+    const projectId = parseInt(String(req.params.id), 10);
+    const projRows = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.user_id, userId))).limit(1);
     const proj = projRows[0];
-    if (!proj || proj.user_id !== userId) {
+    if (!proj) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
@@ -477,25 +529,32 @@ router.post("/projects/:id/synthesize", async (req, res) => {
       return;
     }
 
-    await db.update(projects).set({ ai_summary: summary, updated_at: new Date() }).where(eq(projects.id, projectId));
+    await db.update(projects).set({ ai_summary: summary, updated_at: new Date() }).where(and(eq(projects.id, projectId), eq(projects.user_id, userId)));
     res.json({ ai_summary: summary });
   } catch (err) {
     req.log.error({ err }, "Failed to synthesize project");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Failed to synthesize project" });
   }
 });
 
-router.post("/gemini/general-chat", async (req, res) => {
+router.post("/gemini/general-chat", aiRateLimiter, async (req, res) => {
   try {
-    const { message } = req.body as { message?: string };
-    if (!message?.trim()) {
+    const { message: rawMessage } = req.body as { message?: string };
+    if (!rawMessage?.trim()) {
       res.status(400).json({ error: "Message is required" });
       return;
+    }
+    let message: string;
+    try {
+      message = assertMaxChars(rawMessage, "Message");
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
     }
 
     // Inject the user's own experiment history so "Ask Anything" can answer
     // questions about their real data (the "second brain" behaviour).
-    const userId = getAuth(req).userId!;
+    const userId = getRequestUserId(req);
     const experimentRows = await db
       .select()
       .from(experiments)
@@ -545,8 +604,8 @@ router.post("/gemini/general-chat", async (req, res) => {
     }
     res.end();
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
-    res.end();
+    req.log.error({ err }, "Failed to run general chat");
+    writeAiStreamError(res);
   }
 });
 
@@ -554,13 +613,22 @@ router.post("/gemini/general-chat", async (req, res) => {
 // Describe a research goal → get a structured, bench-ready protocol. Grounded in
 // the scientist's recent experiments for consistency. Returns JSON the frontend
 // can preview and use to pre-fill a new experiment.
-router.post("/gemini/generate-protocol", async (req, res) => {
+router.post("/gemini/generate-protocol", aiRateLimiter, async (req, res) => {
   try {
-    const userId = getAuth(req).userId!;
-    const { goal, assay_type } = req.body as { goal?: string; assay_type?: string };
-    if (!goal?.trim()) {
+    const userId = getRequestUserId(req);
+    const { goal: rawGoal, assay_type: rawAssayType } = req.body as { goal?: string; assay_type?: string };
+    if (!rawGoal?.trim()) {
       res.status(400).json({ error: "A research goal / description is required" });
       return;
+    }
+    let goal: string;
+    let assayType: string | undefined;
+    try {
+      goal = assertMaxChars(rawGoal, "Research goal");
+      assayType = rawAssayType ? assertMaxChars(rawAssayType, "Assay type", 200) : undefined;
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
     }
 
     const recent = await db
@@ -575,7 +643,7 @@ router.post("/gemini/generate-protocol", async (req, res) => {
 
     const systemInstruction = `You are an expert experimental designer for a cell and molecular biology lab. Given a research goal, design a rigorous, bench-ready protocol. Be specific and quantitative: state concentrations, volumes, timings, seeding densities, replicate counts, the plate/sample layout, and the exact controls required (positive, negative, vehicle, blank). Choose an appropriate assay and instrument. Keep it realistic, safe, and concise — no preamble.`;
 
-    const userPrompt = `Design a protocol for this goal: ${goal}${assay_type ? `\nPreferred assay type: ${assay_type}` : ""}${historyCtx}
+    const userPrompt = `Design a protocol for this goal: ${goal}${assayType ? `\nPreferred assay type: ${assayType}` : ""}${historyCtx}
 
 Respond in this exact JSON format:
 {
@@ -614,7 +682,7 @@ Respond in this exact JSON format:
     res.json(protocol);
   } catch (err) {
     req.log.error({ err }, "Failed to generate protocol");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Failed to generate protocol" });
   }
 });
 

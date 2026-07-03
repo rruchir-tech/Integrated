@@ -16,7 +16,7 @@ const router: IRouter = Router();
 router.use(requireAdmin);
 
 router.get("/admin/me", async (req, res) => {
-  const email = normalizeEmail(req.header("x-user-email") || "");
+  const email = normalizeEmail((req as typeof req & { adminEmail?: string }).adminEmail || "");
   const approved = APPROVED_ADMIN_EMAILS.has(email);
   res.json({ email, approved });
 });

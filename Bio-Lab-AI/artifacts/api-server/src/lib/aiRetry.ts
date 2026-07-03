@@ -13,7 +13,7 @@ import { logger } from "./logger";
 // re-thrown immediately, so behavior is unchanged on real failures.
 // ---------------------------------------------------------------------------
 
-const FALLBACK_MODEL = "gemini-2.0-flash";
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-2.5-flash-lite";
 const DEFAULT_ATTEMPTS = 4;
 
 function isTransient(err: unknown): boolean {

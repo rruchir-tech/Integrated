@@ -10,20 +10,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@clerk/express": "^2.1.12",
-    "@clerk/shared": "^4.9.0",
-    "@types/xlsx": "^0.0.36",
+    "@clerk/express": "^2.1.35",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/integrations-gemini-ai": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
+    "exceljs": "4.4.0",
     "express": "^5",
-    "http-proxy-middleware": "^3.0.5",
     "pino": "^9",
-    "pino-http": "^10",
-    "xlsx": "^0.18.5"
+    "pino-http": "^10"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

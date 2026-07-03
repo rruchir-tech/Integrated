@@ -183,3 +183,113 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .app-noise {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.18) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.14) 1px, transparent 1px);
+    background-size: 38px 38px;
+  }
+
+  .surface-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid hsl(var(--border) / 0.82);
+    background:
+      linear-gradient(145deg, hsl(var(--card) / 0.94), hsl(var(--card) / 0.78)),
+      radial-gradient(circle at 20% 0%, hsl(var(--primary) / 0.12), transparent 34%);
+    box-shadow: 0 18px 60px hsl(220 35% 3% / 0.22);
+  }
+
+  .surface-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(120deg, transparent 18%, hsl(var(--foreground) / 0.035), transparent 42%);
+    transform: translateX(-120%);
+    animation: surface-sheen 7s ease-in-out infinite;
+  }
+
+  .lab-scan {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .lab-scan::before {
+    content: "";
+    position: absolute;
+    inset: -40% 0 auto;
+    height: 55%;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, hsl(var(--primary) / 0.16), transparent);
+    transform: translateY(-110%);
+    animation: lab-scan 5.5s ease-in-out infinite;
+  }
+
+  .animated-bar {
+    transform-origin: bottom;
+    animation: bar-breathe 3.6s ease-in-out infinite;
+  }
+
+  .well-pulse {
+    animation: well-pulse 2.8s ease-in-out infinite;
+  }
+
+  .float-slow {
+    animation: float-slow 5s ease-in-out infinite;
+  }
+}
+
+@keyframes surface-sheen {
+  0%, 46% {
+    transform: translateX(-120%);
+  }
+  68%, 100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes lab-scan {
+  0%, 20% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  75%, 100% {
+    transform: translateY(240%);
+    opacity: 0;
+  }
+}
+
+@keyframes bar-breathe {
+  0%, 100% {
+    transform: scaleY(0.72);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes well-pulse {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}

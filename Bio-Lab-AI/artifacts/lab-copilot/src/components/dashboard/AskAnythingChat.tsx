@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles } from "lucide-react";
+import { AlertCircle, Send, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +13,7 @@ const SYSTEM_PROMPT = "You are an expert biotech and cell biology advisor. Answe
 export function AskAnythingChat() {
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState("");
+  const [error, setError] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
   const sendMessage = async () => {
@@ -21,6 +22,7 @@ export function AskAnythingChat() {
 
     setIsStreaming(true);
     setResponse("");
+    setError("");
 
     try {
       const res = await apiFetch("/api/gemini/general-chat", {
@@ -29,6 +31,10 @@ export function AskAnythingChat() {
         body: JSON.stringify({ message: content, systemPrompt: SYSTEM_PROMPT }),
       });
 
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "The AI request failed. Please try again.");
+      }
       if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
@@ -45,22 +51,30 @@ export function AskAnythingChat() {
           if (line.startsWith("data: ")) {
             const data = JSON.parse(line.slice(6));
             if (data.content) setResponse((prev) => prev + data.content);
+            if (data.error) setError(data.error);
           }
         }
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The AI request failed. Please try again.");
     } finally {
       setIsStreaming(false);
     }
   };
 
-  const isEmpty = !response && !isStreaming;
+  const isEmpty = !response && !isStreaming && !error;
 
   return (
-    <Card className="border-primary/20">
+    <Card className="surface-panel rounded-lg border-primary/20">
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <CardTitle>Ask Anything</CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <CardTitle>Ask Anything</CardTitle>
+          </div>
+          <span className="rounded-full border border-border bg-background/60 px-2.5 py-1 text-xs text-muted-foreground">
+            Rate limited
+          </span>
         </div>
         <p className="text-sm text-muted-foreground">General biotech questions, not experiment specific</p>
       </CardHeader>
@@ -80,6 +94,11 @@ export function AskAnythingChat() {
         <div className="max-h-64 overflow-auto rounded-lg border bg-muted/20 p-4 text-sm leading-relaxed">
           {isEmpty ? (
             <span className="text-muted-foreground">Your response will appear here.</span>
+          ) : error ? (
+            <div className="flex items-start gap-2 text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
           ) : (
             <>
               <div className="prose prose-sm dark:prose-invert max-w-none break-words">

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Shield, Users, Database, Ban, Flag, ClipboardList, Activity, Plus, Trash2 } from "lucide-react";
-import { useUser } from "@clerk/react";
+import { useAppUser } from "@/contexts/UserContext";
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 async function fetchJson(path: string, init?: RequestInit) {
@@ -26,14 +26,10 @@ export function AdminPage() {
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
-  const { user, isLoaded } = useUser();
+  const { email: signedInEmail, isLoaded } = useAppUser();
   const currentEmail = useMemo(
-    () =>
-      normalizeEmail(user?.primaryEmailAddress?.emailAddress ?? "") ||
-      normalizeEmail(user?.emailAddresses?.find((e) => e.verification?.status === "verified")?.emailAddress ?? "") ||
-      normalizeEmail(user?.emailAddresses?.[0]?.emailAddress ?? "") ||
-      "",
-    [user],
+    () => normalizeEmail(signedInEmail),
+    [signedInEmail],
   );
 
   const me = useQuery({

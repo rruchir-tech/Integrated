@@ -111,14 +111,14 @@ Copy `.env.example` → `.env` and fill in values.
 
 ```
 # Database
-DATABASE_URL=postgresql://...
+DATABASE_URL=<postgresql-connection-string>
 
 # Gemini AI  (https://aistudio.google.com/apikey)
-GEMINI_API_KEY=AIza...
+GEMINI_API_KEY=<google-gemini-api-key>
 
 # Clerk Auth  (https://dashboard.clerk.com)
-CLERK_SECRET_KEY=sk_live_...
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_...
+CLERK_SECRET_KEY=<clerk-secret-key>
+VITE_CLERK_PUBLISHABLE_KEY=<clerk-publishable-key>
 
 # Admin access — comma-separated emails
 ADMIN_EMAILS=you@example.com

@@ -138,10 +138,10 @@ export function ExperimentForm() {
     // but drag-and-drop bypasses that, so guard here to cover both paths
     // and give a clear message instead of sending garbage to the parser.
     const lowerName = selectedFile.name.toLowerCase();
-    if (!lowerName.endsWith(".xlsx") && !lowerName.endsWith(".xls")) {
+    if (!lowerName.endsWith(".xlsx")) {
       toast({
         title: "Unsupported file type",
-        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx or .xls).",
+        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx).",
         variant: "destructive",
       });
       return;
@@ -473,10 +473,10 @@ export function ExperimentForm() {
                         <div className="text-sm font-medium text-foreground mb-1">
                           {isDragging ? "Release to upload" : "Drop Synergy H1 Excel file here"}
                         </div>
-                        <div className="text-xs text-muted-foreground mb-4">.xlsx or .xls — Gen5 plate reader export</div>
+                        <div className="text-xs text-muted-foreground mb-4">.xlsx Gen5 plate reader export</div>
                         <input
                           type="file"
-                          accept=".xlsx,.xls"
+                          accept=".xlsx"
                           className="hidden"
                           onChange={(e) => {
                             const f = e.target.files?.[0];
