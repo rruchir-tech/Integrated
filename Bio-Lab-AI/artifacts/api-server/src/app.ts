@@ -7,10 +7,21 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 const isProduction = process.env.NODE_ENV === "production";
-const configuredCorsOrigins = (process.env.CORS_ORIGINS ?? process.env.FRONTEND_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+
+const defaultCorsOrigins = ["https://biolab-copilot.vercel.app"];
+
+function parseCorsOrigins(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+const configuredCorsOrigins = new Set([
+  ...defaultCorsOrigins,
+  ...parseCorsOrigins(process.env.CORS_ORIGINS),
+  ...parseCorsOrigins(process.env.FRONTEND_ORIGIN),
+]);
 
 function isAllowedDevOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
@@ -21,12 +32,18 @@ function resolveCorsOrigin(origin: string | undefined, callback: (err: Error | n
     callback(null, true);
     return;
   }
-  if (configuredCorsOrigins.includes(origin) || (!isProduction && isAllowedDevOrigin(origin))) {
+  if (configuredCorsOrigins.has(origin) || (!isProduction && isAllowedDevOrigin(origin))) {
     callback(null, origin);
     return;
   }
   callback(null, false);
 }
+
+const corsOptions = {
+  credentials: true,
+  origin: resolveCorsOrigin,
+  optionsSuccessStatus: 204,
+};
 
 app.use(
   pinoHttp({
@@ -48,7 +65,7 @@ app.use(
   }),
 );
 
-app.use(cors({ credentials: true, origin: resolveCorsOrigin }));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT ?? "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: process.env.REQUEST_BODY_LIMIT ?? "5mb" }));
 
