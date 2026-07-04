@@ -138,10 +138,10 @@ export function ExperimentForm() {
     // but drag-and-drop bypasses that, so guard here to cover both paths
     // and give a clear message instead of sending garbage to the parser.
     const lowerName = selectedFile.name.toLowerCase();
-    if (!lowerName.endsWith(".xlsx")) {
+    if (!lowerName.endsWith(".xlsx") && !lowerName.endsWith(".xls")) {
       toast({
         title: "Unsupported file type",
-        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx).",
+        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx or .xls).",
         variant: "destructive",
       });
       return;
