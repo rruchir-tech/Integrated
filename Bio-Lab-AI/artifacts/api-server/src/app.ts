@@ -27,12 +27,24 @@ function isAllowedDevOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
 }
 
+// Allow this project's Vercel deployments (production + preview URLs) without
+// having to hardcode every generated subdomain. Data is still protected by the
+// per-request auth token, which a third-party origin cannot obtain. To lock this
+// down to a single origin, set CORS_ORIGINS and remove this helper.
+function isAllowedVercelOrigin(origin: string): boolean {
+  return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+}
+
 function resolveCorsOrigin(origin: string | undefined, callback: (err: Error | null, origin?: boolean | string) => void) {
   if (!origin) {
     callback(null, true);
     return;
   }
-  if (configuredCorsOrigins.has(origin) || (!isProduction && isAllowedDevOrigin(origin))) {
+  if (
+    configuredCorsOrigins.has(origin) ||
+    isAllowedVercelOrigin(origin) ||
+    (!isProduction && isAllowedDevOrigin(origin))
+  ) {
     callback(null, origin);
     return;
   }
