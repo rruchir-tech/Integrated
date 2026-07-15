@@ -285,7 +285,7 @@ export function ExperimentForm() {
     toast({ title: `Template applied: ${t.name}`, description: "Fields have been pre-filled. Adjust as needed." });
   }
 
-  const STEPS = ["Import Data", "Experiment Details", "Review & Save"];
+  const STEPS = ["Experiment Details", "Review & Save"];
   const [step, setStep] = useState(0);
 
   const [aiGoal, setAiGoal] = useState("");
@@ -338,7 +338,7 @@ export function ExperimentForm() {
     <div className="max-w-2xl mx-auto py-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">New Experiment</h1>
-        <p className="text-muted-foreground mt-2">Log a new experiment run and upload results for AI analysis.</p>
+        <p className="text-muted-foreground mt-2">Design the experiment now — add plate-reader data and quantify it later from the experiment page.</p>
       </div>
 
       {templates && templates.length > 0 && (
@@ -445,144 +445,6 @@ export function ExperimentForm() {
           <AnimatePresence mode="wait">
             {step === 0 && (
               <motion.div
-                key="step0"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4"
-              >
-                <Card className="border-primary/30 bg-primary/5">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <FlaskConical className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-base">Import from Synergy H1</CardTitle>
-                      <Badge variant="outline" className="text-[10px] ml-auto">Optional</Badge>
-                    </div>
-                    <CardDescription>
-                      Upload a BioTek Gen5 Excel export to auto-populate fields and visualize the 96-well plate.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {!synergyFile ? (
-                      <label
-                        className={`block border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${
-                          isDragging
-                            ? "border-primary bg-primary/10 scale-[1.01]"
-                            : "border-primary/30 hover:border-primary/60 hover:bg-primary/5"
-                        }`}
-                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-                        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-                        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsDragging(false);
-                          const f = e.dataTransfer.files[0];
-                          if (f) handleSynergyFile(f);
-                        }}
-                      >
-                        <UploadCloud className={`h-10 w-10 text-primary mb-3 transition-transform ${isDragging ? "scale-125" : ""}`} />
-                        <div className="text-sm font-medium text-foreground mb-1">
-                          {isDragging ? "Release to upload" : "Drop Synergy H1 Excel file here"}
-                        </div>
-                        <div className="text-xs text-muted-foreground mb-4">.xlsx Gen5 plate reader export</div>
-                        <input
-                          type="file"
-                          accept=".xlsx"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleSynergyFile(f);
-                          }}
-                        />
-                        <Button type="button" variant="outline" size="sm" asChild>
-                          <span>Browse file</span>
-                        </Button>
-                      </label>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            {synergyLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                            ) : synergyResult ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            ) : (
-                              <AlertTriangle className="h-4 w-4 text-destructive" />
-                            )}
-                            <span className="font-mono text-xs truncate max-w-[280px]">{synergyFile.name}</span>
-                          </div>
-                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={clearSynergy}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        {synergyLoading && (
-                          <div className="text-xs text-muted-foreground text-center py-4">Parsing plate data…</div>
-                        )}
-                        {synergyResult && (
-                          <div className="space-y-3">
-                            <div className="flex flex-wrap gap-2">
-                              {synergyResult.metadata.wavelength && (
-                                <Badge variant="secondary" className="font-mono text-xs">λ {synergyResult.metadata.wavelength} nm</Badge>
-                              )}
-                              {synergyResult.metadata.protocol && (
-                                <Badge variant="outline" className="text-xs">{synergyResult.metadata.protocol}</Badge>
-                              )}
-                              <Badge variant="outline" className={`text-xs font-mono ${
-                                synergyResult.stats.cv_pct !== null && synergyResult.stats.cv_pct > 20
-                                  ? "border-destructive text-destructive"
-                                  : synergyResult.stats.cv_pct !== null && synergyResult.stats.cv_pct > 10
-                                  ? "border-yellow-500 text-yellow-600"
-                                  : "border-emerald-500 text-emerald-600"
-                              }`}>
-                                CV: {synergyResult.stats.cv_pct?.toFixed(1) ?? "–"}%
-                              </Badge>
-                              <Badge variant="outline" className="text-xs font-mono">{synergyResult.stats.well_count} wells</Badge>
-                            </div>
-                            <PlateHeatmap wells={synergyResult.wells} stats={synergyResult.stats} wavelength={synergyResult.metadata.wavelength} compact />
-                            <div className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2 font-mono">
-                              Fields auto-populated → review and adjust in the next step.
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-muted/20">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <UploadCloud className="h-5 w-5 text-muted-foreground" />
-                      <CardTitle className="text-base text-muted-foreground">Or upload a CSV/TSV file</CardTitle>
-                      <Badge variant="outline" className="text-[10px] ml-auto">Optional</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        type="file"
-                        accept=".csv,.tsv,.txt"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        className="max-w-xs bg-background"
-                      />
-                      {file && <span className="text-sm text-primary font-medium truncate">{file.name}</span>}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="flex justify-between pt-2">
-                  <Button type="button" variant="outline" onClick={() => setLocation("/experiments")}>Cancel</Button>
-                  <Button type="button" onClick={() => setStep(1)} disabled={synergyLoading}>
-                    Continue →
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {step === 1 && (
-              <motion.div
                 key="step1"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -687,10 +549,10 @@ export function ExperimentForm() {
                 </Card>
 
                 <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={() => setStep(0)}>← Back</Button>
+                  <Button type="button" variant="outline" onClick={() => setLocation("/experiments")}>Cancel</Button>
                   <Button
                     type="button"
-                    onClick={() => setStep(2)}
+                    onClick={() => setStep(1)}
                     disabled={!canProceedToStep2}
                   >
                     Review →
@@ -699,7 +561,7 @@ export function ExperimentForm() {
               </motion.div>
             )}
 
-            {step === 2 && (
+            {step === 1 && (
               <motion.div
                 key="step2"
                 initial={{ opacity: 0, x: 20 }}
@@ -752,7 +614,7 @@ export function ExperimentForm() {
                 </Card>
 
                 <div className="flex justify-between pt-2">
-                  <Button type="button" variant="outline" onClick={() => setStep(1)}>← Edit Details</Button>
+                  <Button type="button" variant="outline" onClick={() => setStep(0)}>← Edit Details</Button>
                   <Button type="submit" disabled={createMutation.isPending || synergyLoading} className="">
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Experiment
