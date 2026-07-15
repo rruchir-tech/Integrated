@@ -10,7 +10,9 @@ import { Link, useLocation } from "wouter";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { useEffect } from "react";
 import { AskAnythingChat } from "@/components/dashboard/AskAnythingChat";
+import { DashboardTasks } from "@/components/dashboard/DashboardTasks";
 import { Badge } from "@/components/ui/badge";
+import { isEnabled } from "@/lib/features";
 
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
@@ -126,15 +128,17 @@ function OnboardingEmptyState() {
           Upload your first experiment
           <ChevronRight className="h-4 w-4 opacity-70" />
         </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          className="gap-2"
-          onClick={() => navigate("/templates")}
-        >
-          <BookOpen className="h-4 w-4" />
-          Browse templates
-        </Button>
+        {isEnabled("templates") && (
+          <Button
+            size="lg"
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate("/templates")}
+          >
+            <BookOpen className="h-4 w-4" />
+            Browse templates
+          </Button>
+        )}
       </motion.div>
 
       {/* Supported instruments hint */}
@@ -610,6 +614,8 @@ export function Dashboard() {
           </Card>
         </motion.div>
       </div>
+
+      <DashboardTasks />
 
       <div className="pt-2">
         <AskAnythingChat />

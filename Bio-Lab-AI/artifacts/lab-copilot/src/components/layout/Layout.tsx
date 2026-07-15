@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CommandPaletteTrigger } from "@/components/CommandPalette";
 import { useAppUser } from "@/contexts/UserContext";
+import { isEnabled } from "@/lib/features";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -116,14 +117,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 overflow-hidden py-4 flex flex-col gap-6 relative z-10">
           <div className="px-3 flex flex-col gap-1">
             {[
-              { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, shortcut: "G D", active: location === "/dashboard" || location === "/", count: null },
-              { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null },
-              { href: "/projects", label: "Projects", icon: <FolderKanban className="h-4 w-4" />, shortcut: "G P", active: location.startsWith("/projects"), count: null },
-              { href: "/experiments/compare", label: "Compare", icon: <GitCompare className="h-4 w-4" />, shortcut: "G C", active: location === "/experiments/compare", count: null },
-              { href: "/data-analysis", label: "Data Analysis", icon: <BarChart3 className="h-4 w-4" />, shortcut: "G A", active: location === "/data-analysis", count: null },
-              { href: "/templates", label: "Templates", icon: <BookTemplate className="h-4 w-4" />, shortcut: "G T", active: location === "/templates", count: null },
-              { href: "/tasks", label: "Tasks", icon: <ClipboardList className="h-4 w-4" />, shortcut: "G K", active: location === "/tasks", count: null },
-            ].map(({ href, label, icon, shortcut, active, count }) => (
+              { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, shortcut: "G D", active: location === "/dashboard" || location === "/", count: null, show: true },
+              { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null, show: true },
+              { href: "/projects", label: "Projects", icon: <FolderKanban className="h-4 w-4" />, shortcut: "G P", active: location.startsWith("/projects"), count: null, show: true },
+              { href: "/experiments/compare", label: "Compare", icon: <GitCompare className="h-4 w-4" />, shortcut: "G C", active: location === "/experiments/compare", count: null, show: isEnabled("compare") },
+              { href: "/data-analysis", label: "Data Analysis", icon: <BarChart3 className="h-4 w-4" />, shortcut: "G A", active: location === "/data-analysis", count: null, show: isEnabled("dataAnalysis") },
+              { href: "/templates", label: "Templates", icon: <BookTemplate className="h-4 w-4" />, shortcut: "G T", active: location === "/templates", count: null, show: isEnabled("templates") },
+              { href: "/tasks", label: "Tasks", icon: <ClipboardList className="h-4 w-4" />, shortcut: "G K", active: location === "/tasks", count: null, show: isEnabled("tasks") },
+            ].filter((item) => item.show).map(({ href, label, icon, shortcut, active, count }) => (
               <Link
                 key={href}
                 href={href}

@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DemoUserProvider, ClerkUserProvider } from "@/contexts/UserContext";
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
+import { isEnabled } from "@/lib/features";
 
 // ── API base URL ─────────────────────────────────────────────────────────────
 // When frontend and API are on different origins (Vercel + Render),
@@ -114,11 +115,14 @@ function AppRoutes({ isAdmin }: { isAdmin: boolean }) {
       <ShortcutHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <Switch>
         <Route path="/" component={() => <Redirect to="/dashboard" />} />
+        <Route path="/landing"><LandingPage /></Route>
         <Route path="/dashboard">
           <Layout><AnimatedRoute><Dashboard /></AnimatedRoute></Layout>
         </Route>
         <Route path="/experiments/compare">
-          <Layout><AnimatedRoute><ExperimentCompare /></AnimatedRoute></Layout>
+          {isEnabled("compare")
+            ? <Layout><AnimatedRoute><ExperimentCompare /></AnimatedRoute></Layout>
+            : <Redirect to="/dashboard" />}
         </Route>
         <Route path="/experiments/new">
           <Layout><AnimatedRoute><ExperimentForm /></AnimatedRoute></Layout>
@@ -139,13 +143,19 @@ function AppRoutes({ isAdmin }: { isAdmin: boolean }) {
           <Layout><AnimatedRoute><ProjectsPage /></AnimatedRoute></Layout>
         </Route>
         <Route path="/data-analysis">
-          <Layout><AnimatedRoute><DataAnalysisPage /></AnimatedRoute></Layout>
+          {isEnabled("dataAnalysis")
+            ? <Layout><AnimatedRoute><DataAnalysisPage /></AnimatedRoute></Layout>
+            : <Redirect to="/dashboard" />}
         </Route>
         <Route path="/templates">
-          <Layout><AnimatedRoute><TemplatesPage /></AnimatedRoute></Layout>
+          {isEnabled("templates")
+            ? <Layout><AnimatedRoute><TemplatesPage /></AnimatedRoute></Layout>
+            : <Redirect to="/dashboard" />}
         </Route>
         <Route path="/tasks">
-          <Layout><AnimatedRoute><TasksPage /></AnimatedRoute></Layout>
+          {isEnabled("tasks")
+            ? <Layout><AnimatedRoute><TasksPage /></AnimatedRoute></Layout>
+            : <Redirect to="/dashboard" />}
         </Route>
         <Route path="/admin">
           {isAdmin
@@ -275,7 +285,11 @@ function ClerkAppRoutes() {
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/experiments/compare">
-          <Show when="signed-in"><Layout><AnimatedRoute><ExperimentCompare /></AnimatedRoute></Layout></Show>
+          <Show when="signed-in">
+            {isEnabled("compare")
+              ? <Layout><AnimatedRoute><ExperimentCompare /></AnimatedRoute></Layout>
+              : <Redirect to="/dashboard" />}
+          </Show>
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/experiments/new">
@@ -303,15 +317,27 @@ function ClerkAppRoutes() {
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/data-analysis">
-          <Show when="signed-in"><Layout><AnimatedRoute><DataAnalysisPage /></AnimatedRoute></Layout></Show>
+          <Show when="signed-in">
+            {isEnabled("dataAnalysis")
+              ? <Layout><AnimatedRoute><DataAnalysisPage /></AnimatedRoute></Layout>
+              : <Redirect to="/dashboard" />}
+          </Show>
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/templates">
-          <Show when="signed-in"><Layout><AnimatedRoute><TemplatesPage /></AnimatedRoute></Layout></Show>
+          <Show when="signed-in">
+            {isEnabled("templates")
+              ? <Layout><AnimatedRoute><TemplatesPage /></AnimatedRoute></Layout>
+              : <Redirect to="/dashboard" />}
+          </Show>
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/tasks">
-          <Show when="signed-in"><Layout><AnimatedRoute><TasksPage /></AnimatedRoute></Layout></Show>
+          <Show when="signed-in">
+            {isEnabled("tasks")
+              ? <Layout><AnimatedRoute><TasksPage /></AnimatedRoute></Layout>
+              : <Redirect to="/dashboard" />}
+          </Show>
           <Show when="signed-out"><Redirect to="/" /></Show>
         </Route>
         <Route path="/admin">

@@ -8,7 +8,7 @@ import {
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
-import { assayGuidanceBlock } from "../lib/assayKnowledge";
+import { analysisKnowledgeBlock, QUANTIFICATION_PROTOCOL } from "../lib/assayKnowledge";
 import { getRequestUserId } from "../lib/requestUser";
 import { aiRateLimiter } from "../middlewares/rateLimit";
 import { assertMaxChars } from "../lib/requestLimits";
@@ -319,6 +319,65 @@ router.delete("/experiments/:id", async (req, res) => {
   }
 });
 
+// Attach (or replace) plate data on an EXISTING experiment. This is what makes the
+// design-first workflow possible: create an experiment from a goal/protocol with no
+// data, then upload the plate output later and quantify it. Re-parses the file and
+// clears the previous AI analysis (it no longer matches the new data).
+router.post("/experiments/:id/data", async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
+    const body = requestBody(req.body);
+    const fileContentB64 = optionalString(body.file_content_b64);
+    const fileName = optionalString(body.file_name);
+    if (!fileContentB64 || !fileName) {
+      return res.status(400).json({ error: "file_content_b64 and file_name are required" });
+    }
+
+    const exp = await findOwnedExperiment(id, userId);
+    if (!exp) return res.status(404).json({ error: "Experiment not found" });
+
+    const rawDataJson = await parseFileContent(fileContentB64, fileName);
+    // Guard against degenerate parses so we never overwrite good analysis with junk:
+    // parseFileContent returns { error } for empty/too-short files, or a plate96 with
+    // zero readings when no 8×12 grid was found. Reject both rather than attaching them.
+    try {
+      const parsed = JSON.parse(rawDataJson) as { _type?: string; error?: string; stats?: { well_count?: number } };
+      if (parsed.error) {
+        return res.status(422).json({
+          error: "Couldn't read any data from this file. Upload a Gen5 / Synergy H1 .xlsx plate export, or a CSV/TSV with a header row.",
+        });
+      }
+      if (parsed._type === "plate96" && (parsed.stats?.well_count ?? 0) === 0) {
+        return res.status(422).json({
+          error: "Couldn't find a 96-well plate grid in this file. Export the plate as a matrix (rows A–H, columns 1–12), or upload a CSV/TSV for other layouts.",
+        });
+      }
+    } catch { /* non-JSON parse result is handled below as-is */ }
+
+    const [updated] = await db
+      .update(experiments)
+      .set({
+        raw_data_json: rawDataJson,
+        file_name: fileName,
+        ai_summary: null,
+        ai_next_experiments_json: null,
+        updated_at: new Date(),
+      })
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: "Experiment not found" });
+    return res.json(updated);
+  } catch (err) {
+    req.log.error({ err }, "Failed to attach data to experiment");
+    if (err instanceof UploadInputError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(400).json({ error: "Could not attach data. Upload a valid CSV, TSV, TXT, or XLSX export." });
+  }
+});
+
 router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) => {
   try {
     const userId = getRequestUserId(req);
@@ -353,6 +412,8 @@ router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) =>
 1) a structured quantitative summary of the current experiment (control stats, dose-response stats, outliers),
 2) metadata (assay type, instrument, notes),
 3) optionally summaries of previous related experiments.
+
+${QUANTIFICATION_PROTOCOL}
 
 Your job is to:
 - summarize what happened in this experiment,
@@ -753,7 +814,7 @@ Normalize sample wells to % of control using these control means, and report thi
       exp.assay_type?.toLowerCase().includes("absorbance") ||
       (exp.raw_data_json?.includes('"_type":"plate96"') ?? false));
 
-    const assayGuidance = assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+    const assayGuidance = analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
 
     const systemPrompt = isPlateReaderExp
       ? `You are a senior assay scientist reviewing a colleague's plate-reader run. Think like a bench scientist, not a report generator: first work out what this experiment was TRYING to do from its protocol/notes, state the result you would EXPECT if it worked, then judge what the data actually shows and explain WHY — distinguishing a technical problem from a real biological finding.
@@ -950,9 +1011,19 @@ router.post("/experiments/parse-synergy", async (req, res) => {
 
     const buffer = decodeUpload(file_content_b64, file_name);
     const rows = await readFirstWorksheetRows(buffer);
-    if (!rows.length) return res.status(400).json({ error: "No rows found in workbook" });
+    if (!rows.length) {
+      return res.status(422).json({ error: "This spreadsheet is empty. Upload a Gen5 / Synergy H1 plate export with data." });
+    }
 
     const result = parseSynergyH1Rows(rows, file_name);
+    // A valid parse still yields zero readings when the sheet has no detectable
+    // 8×12 grid (wrong export, transposed layout, or a non-plate sheet). Tell the
+    // user instead of returning a blank heatmap.
+    if (result.stats.well_count === 0) {
+      return res.status(422).json({
+        error: "Couldn't find a 96-well plate grid in this file. Export the plate as a matrix (rows A–H, columns 1–12) from Gen5, or use the CSV/TSV upload for other layouts.",
+      });
+    }
     return res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to parse Synergy H1 file");

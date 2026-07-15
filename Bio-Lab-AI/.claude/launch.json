@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Lab Copilot",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@workspace/lab-copilot", "run", "dev"],
+      "port": 8081
+    }
+  ]
+}

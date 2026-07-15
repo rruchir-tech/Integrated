@@ -31,6 +31,7 @@ import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { PlateHeatmap } from "@/components/PlateHeatmap";
+import { isEnabled } from "@/lib/features";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Template {
@@ -138,10 +139,20 @@ export function ExperimentForm() {
     // but drag-and-drop bypasses that, so guard here to cover both paths
     // and give a clear message instead of sending garbage to the parser.
     const lowerName = selectedFile.name.toLowerCase();
+    // Legacy .xls (BIFF binary) can't be read server-side — Gen5 can re-export
+    // as .xlsx, so tell the user exactly what to do rather than failing opaquely.
+    if (lowerName.endsWith(".xls") && !lowerName.endsWith(".xlsx")) {
+      toast({
+        title: "Legacy .xls not supported",
+        description: "Open the file in Gen5 or Excel and re-export/Save As .xlsx, then upload that.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!lowerName.endsWith(".xlsx")) {
       toast({
         title: "Unsupported file type",
-        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx).",
+        description: "Drop a BioTek Gen5 / Synergy H1 Excel export (.xlsx). For raw tables, use the CSV/TSV upload below.",
         variant: "destructive",
       });
       return;
@@ -364,6 +375,7 @@ export function ExperimentForm() {
         </motion.div>
       )}
 
+      {isEnabled("protocolDesigner") && (
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -394,6 +406,7 @@ export function ExperimentForm() {
           {generatingProtocol ? "Designing…" : "Generate protocol"}
         </Button>
       </motion.div>
+      )}
 
       <div className="mb-6">
         <div className="flex items-center gap-0">

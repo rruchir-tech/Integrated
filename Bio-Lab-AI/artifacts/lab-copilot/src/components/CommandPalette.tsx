@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Command } from "cmdk";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { isEnabled } from "@/lib/features";
 import {
   LayoutDashboard,
   Beaker,
@@ -111,12 +112,14 @@ export function CommandPalette() {
                     shortcut="G E"
                     onSelect={() => go("/experiments")}
                   />
-                  <PaletteItem
-                    icon={<GitCompare className="h-4 w-4" />}
-                    label="Compare Experiments"
-                    shortcut="G C"
-                    onSelect={() => go("/experiments/compare")}
-                  />
+                  {isEnabled("compare") && (
+                    <PaletteItem
+                      icon={<GitCompare className="h-4 w-4" />}
+                      label="Compare Experiments"
+                      shortcut="G C"
+                      onSelect={() => go("/experiments/compare")}
+                    />
+                  )}
                   <PaletteItem
                     icon={<Plus className="h-4 w-4 text-primary" />}
                     label="New Experiment"

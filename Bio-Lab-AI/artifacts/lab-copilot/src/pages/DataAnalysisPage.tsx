@@ -28,47 +28,92 @@ import {
   RotateCcw,
   Loader2,
   FileBarChart,
+  GitCompare,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 
+// The parser emits one of two shapes into experiments.raw_data_json:
+//  1. A 96-well plate ("_type":"plate96") with { stats, wells, metadata }
+//  2. A generic CSV/TSV summary with { total_rows, columns, signal_stats, condition_groups }
+// This page understands both and degrades to a clear message when neither is present.
 
-interface PlateSummary {
-  instrument?: string;
-  assay_type?: string;
-  control_stats?: {
-    mean_signal?: number;
-    sd_signal?: number;
-    cv_percent?: number;
-    n_wells?: number;
-  };
-  dose_groups?: Array<{
-    dose_uM?: number;
-    mean_signal?: number;
-    sd_signal?: number;
-    n_wells?: number;
-    percent_change_vs_control?: number;
-  }>;
-  outlier_wells?: string[];
-  [key: string]: unknown;
+interface PlateWell {
+  well: string;
+  row: string;
+  col: number;
+  value: number | null;
+  status: "ok" | "blank" | "high" | "low";
 }
 
-function parsePlateSummary(raw: string | null | undefined): PlateSummary | null {
+interface Plate96Summary {
+  _type: "plate96";
+  metadata?: { wavelength?: string | null; protocol?: string | null };
+  stats?: {
+    mean: number | null;
+    sd: number | null;
+    cv_pct: number | null;
+    min: number | null;
+    max: number | null;
+    blank_count: number;
+    well_count: number;
+  };
+  wells?: PlateWell[];
+}
+
+interface CsvSummary {
+  filename?: string;
+  total_rows?: number;
+  columns?: string[];
+  signal_stats?: { mean?: string; sd?: string; n?: number };
+  condition_groups?: Array<{ condition: string; n: number; mean: string | null }>;
+}
+
+type ParsedSummary =
+  | ({ kind: "plate96" } & Plate96Summary)
+  | ({ kind: "csv" } & CsvSummary)
+  | null;
+
+function parseSummary(raw: string | null | undefined): ParsedSummary {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) return parsed as PlateSummary;
+    if (typeof parsed !== "object" || parsed === null) return null;
+    if (parsed._type === "plate96") return { kind: "plate96", ...parsed };
+    if (Array.isArray(parsed.columns) || parsed.signal_stats || parsed.condition_groups) {
+      return { kind: "csv", ...parsed };
+    }
     return null;
   } catch {
     return null;
   }
 }
 
-function hasGraphableData(summary: PlateSummary | null) {
-  return !!summary && (
-    !!summary.control_stats ||
-    Array.isArray(summary.dose_groups) && summary.dose_groups.length > 0 ||
-    Array.isArray(summary.outlier_wells) && summary.outlier_wells.length > 0
-  );
+function hasGraphableData(summary: ParsedSummary): boolean {
+  if (!summary) return false;
+  if (summary.kind === "plate96") {
+    return Array.isArray(summary.wells) && summary.wells.some((w) => w.value !== null);
+  }
+  return !!summary.signal_stats || (Array.isArray(summary.condition_groups) && summary.condition_groups.length > 0);
+}
+
+// Mean signal per plate column (1–12) — a quick way to spot dose gradients or
+// edge effects (columns 1/12 drifting from the interior).
+function columnMeans(wells: PlateWell[]): { col: string; mean: number }[] {
+  const sums = new Map<number, { total: number; n: number }>();
+  for (const w of wells) {
+    if (w.value === null || w.status === "blank") continue;
+    const acc = sums.get(w.col) ?? { total: 0, n: 0 };
+    acc.total += w.value;
+    acc.n += 1;
+    sums.set(w.col, acc);
+  }
+  const out: { col: string; mean: number }[] = [];
+  for (let c = 1; c <= 12; c++) {
+    const acc = sums.get(c);
+    if (acc && acc.n > 0) out.push({ col: String(c), mean: acc.total / acc.n });
+  }
+  return out;
 }
 
 function ExperimentMetaCard({ id }: { id: number }) {
@@ -112,106 +157,83 @@ function ExperimentMetaCard({ id }: { id: number }) {
   );
 }
 
-function QuantitativeSummaryPanel({ id }: { id: number }) {
-  const { data, isLoading } = useGetExperiment(id, {
-    query: { enabled: !!id, queryKey: getGetExperimentQueryKey(id) },
-  });
-
-  if (isLoading) return <Skeleton className="h-64 w-full" />;
-  if (!data) return null;
-
-  const summary = parsePlateSummary(data.raw_data_json);
-
-  if (!summary || (!summary.control_stats && !summary.dose_groups)) {
-    return (
-      <Card className="border-yellow-500/20 bg-yellow-500/5">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">No quantitative summary available</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Please upload a valid Synergy H1 / Gen5 CSV to see numeric metrics here.
-              </p>
-            </div>
+function StatGrid({ items }: { items: { label: string; value: string; highlight?: "warn" | "ok" }[] }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+          <div className={`text-lg font-bold font-mono ${item.highlight === "warn" ? "text-yellow-500" : item.highlight === "ok" ? "text-emerald-500" : "text-foreground"}`}>
+            {item.value}
           </div>
-        </CardContent>
-      </Card>
-    );
-  }
+          <div className="text-xs text-muted-foreground mt-0.5">{item.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  const ctrl = summary.control_stats;
-  const doses = summary.dose_groups ?? [];
-  const outliers = summary.outlier_wells ?? [];
+function Plate96Panel({ summary }: { summary: { kind: "plate96" } & Plate96Summary }) {
+  const stats = summary.stats;
+  const wells = summary.wells ?? [];
+  const outliers = wells.filter((w) => w.status === "high" || w.status === "low");
+  const colMeans = columnMeans(wells);
+  const cv = stats?.cv_pct ?? null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="space-y-4">
-      {ctrl && (
+      {stats && (
         <Card className="border-primary/20 dark:bg-card/80">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              Control Statistics
+              Plate Statistics
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                { label: "Mean Signal", value: ctrl.mean_signal?.toFixed(3) ?? "—" },
-                { label: "SD", value: ctrl.sd_signal?.toFixed(3) ?? "—" },
-                { label: "CV%", value: ctrl.cv_percent != null ? `${ctrl.cv_percent.toFixed(2)}%` : "—", highlight: (ctrl.cv_percent ?? 0) > 20 ? "warn" : "ok" },
-                { label: "Wells (n)", value: ctrl.n_wells?.toString() ?? "—" },
-              ].map((item) => (
-                <div key={item.label} className="rounded-lg border border-border bg-muted/30 p-3 text-center">
-                  <div className={`text-lg font-bold font-mono ${item.highlight === "warn" ? "text-yellow-500" : item.highlight === "ok" ? "text-emerald-500" : "text-foreground"}`}>
-                    {item.value}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{item.label}</div>
-                </div>
-              ))}
-            </div>
+          <CardContent className="space-y-4">
+            <StatGrid
+              items={[
+                { label: "Mean", value: stats.mean != null ? stats.mean.toFixed(3) : "—" },
+                { label: "SD", value: stats.sd != null ? stats.sd.toFixed(3) : "—" },
+                { label: "CV%", value: cv != null ? `${cv.toFixed(1)}%` : "—", highlight: cv != null ? (cv > 20 ? "warn" : "ok") : undefined },
+                { label: "Wells (n)", value: String(stats.well_count ?? "—") },
+                { label: "Min", value: stats.min != null ? stats.min.toFixed(3) : "—" },
+                { label: "Max", value: stats.max != null ? stats.max.toFixed(3) : "—" },
+                { label: "Blanks", value: String(stats.blank_count ?? 0) },
+                { label: "Outliers", value: String(outliers.length) },
+              ]}
+            />
           </CardContent>
         </Card>
       )}
 
-      {doses.length > 0 && (
+      {colMeans.length > 1 && (
         <Card className="border-primary/20 dark:bg-card/80">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Dose-Response Groups
+              Mean Signal by Column
             </CardTitle>
+            <CardDescription>Flat bars = uniform plate. A gradient across columns can signal a dose series or an edge/evaporation effect.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground">
-                    <th className="text-left pb-2 font-medium">Dose (µM)</th>
-                    <th className="text-right pb-2 font-medium">Mean Signal</th>
-                    <th className="text-right pb-2 font-medium">SD</th>
-                    <th className="text-right pb-2 font-medium">n</th>
-                    <th className="text-right pb-2 font-medium">% vs Control</th>
-                  </tr>
-                </thead>
-                <tbody className="font-mono">
-                  {doses.map((dose, i) => {
-                    const pct = dose.percent_change_vs_control ?? 0;
-                    const pctColor = pct < -50 ? "text-red-500" : pct < -20 ? "text-yellow-500" : "text-emerald-500";
-                    return (
-                      <tr key={i} className="border-b border-border/50 last:border-0">
-                        <td className="py-2 text-left text-primary">{dose.dose_uM ?? "—"}</td>
-                        <td className="py-2 text-right">{dose.mean_signal?.toFixed(3) ?? "—"}</td>
-                        <td className="py-2 text-right text-muted-foreground">{dose.sd_signal?.toFixed(3) ?? "—"}</td>
-                        <td className="py-2 text-right text-muted-foreground">{dose.n_wells ?? "—"}</td>
-                        <td className={`py-2 text-right font-semibold ${pctColor}`}>
-                          {dose.percent_change_vs_control != null ? `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%` : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={colMeans} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+                  <XAxis dataKey="col" tick={{ fontSize: 11 }} stroke="currentColor" className="text-muted-foreground" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="currentColor" className="text-muted-foreground" width={48} domain={["auto", "auto"]} />
+                  <Tooltip
+                    formatter={(v: number) => [v.toFixed(3), "mean"]}
+                    labelFormatter={(l) => `Column ${l}`}
+                    contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                  />
+                  {stats?.mean != null && <ReferenceLine y={stats.mean} stroke="hsl(var(--primary))" strokeDasharray="3 3" />}
+                  <Bar dataKey="mean" radius={[3, 3, 0, 0]}>
+                    {colMeans.map((entry) => (
+                      <Cell key={entry.col} fill="hsl(var(--primary))" fillOpacity={0.8} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
@@ -222,14 +244,15 @@ function QuantitativeSummaryPanel({ id }: { id: number }) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
               <AlertTriangle className="h-4 w-4" />
-              Outlier Wells
+              Outlier Wells ({outliers.length})
             </CardTitle>
+            <CardDescription>Wells &gt; 2 SD from the plate mean — candidates for pipetting errors, bubbles, or edge effects.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {outliers.map((well) => (
-                <Badge key={well} variant="outline" className="font-mono text-yellow-600 border-yellow-500/40">
-                  {well}
+              {outliers.map((w) => (
+                <Badge key={w.well} variant="outline" className="font-mono text-yellow-600 border-yellow-500/40">
+                  {w.well} ({w.status}{w.value != null ? ` · ${w.value.toFixed(2)}` : ""})
                 </Badge>
               ))}
             </div>
@@ -240,6 +263,99 @@ function QuantitativeSummaryPanel({ id }: { id: number }) {
   );
 }
 
+function CsvPanel({ summary }: { summary: { kind: "csv" } & CsvSummary }) {
+  const sig = summary.signal_stats;
+  const groups = summary.condition_groups ?? [];
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="space-y-4">
+      <Card className="border-primary/20 dark:bg-card/80">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            Tabular Data Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <StatGrid
+            items={[
+              { label: "Rows", value: String(summary.total_rows ?? "—") },
+              { label: "Columns", value: String(summary.columns?.length ?? "—") },
+              { label: "Signal Mean", value: sig?.mean ?? "—" },
+              { label: "Signal SD", value: sig?.sd ?? "—" },
+            ]}
+          />
+        </CardContent>
+      </Card>
+
+      {groups.length > 0 && (
+        <Card className="border-primary/20 dark:bg-card/80">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Condition Groups
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs text-muted-foreground">
+                    <th className="text-left pb-2 font-medium">Condition</th>
+                    <th className="text-right pb-2 font-medium">n</th>
+                    <th className="text-right pb-2 font-medium">Mean</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {groups.map((g, i) => (
+                    <tr key={i} className="border-b border-border/50 last:border-0">
+                      <td className="py-2 text-left text-primary">{g.condition}</td>
+                      <td className="py-2 text-right text-muted-foreground">{g.n}</td>
+                      <td className="py-2 text-right">{g.mean ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </motion.div>
+  );
+}
+
+function QuantitativeSummaryPanel({ id }: { id: number }) {
+  const { data, isLoading } = useGetExperiment(id, {
+    query: { enabled: !!id, queryKey: getGetExperimentQueryKey(id) },
+  });
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+  if (!data) return null;
+
+  const summary = parseSummary(data.raw_data_json);
+
+  if (!summary || !hasGraphableData(summary)) {
+    return (
+      <Card className="border-yellow-500/20 bg-yellow-500/5">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">No quantitative summary available</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                This experiment has no parsed plate or tabular data. Create a new experiment and upload a Synergy H1 / Gen5 Excel export (or a CSV/TSV) to see numeric metrics here.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return summary.kind === "plate96"
+    ? <Plate96Panel summary={summary} />
+    : <CsvPanel summary={summary} />;
+}
+
 export function DataAnalysisPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [report, setReport] = useState<string>("");
@@ -247,6 +363,14 @@ export function DataAnalysisPage() {
   const [hasReport, setHasReport] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Compare mode — lives here instead of a separate nav page. Pick a second
+  // experiment and stream an AI comparison against the selected one.
+  const [compareId, setCompareId] = useState<number | null>(null);
+  const [compareReport, setCompareReport] = useState("");
+  const [comparing, setComparing] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const compareAbortRef = useRef<AbortController | null>(null);
 
   const { data: allExperiments, isLoading: listLoading } = useListExperiments(undefined, {
     query: { queryKey: getListExperimentsQueryKey() },
@@ -256,7 +380,7 @@ export function DataAnalysisPage() {
     query: { enabled: !!selectedId, queryKey: getGetExperimentQueryKey(selectedId ?? 0) },
   });
 
-  const parsedSelectedSummary = parsePlateSummary(selectedExp?.raw_data_json);
+  const parsedSelectedSummary = parseSummary(selectedExp?.raw_data_json);
   const hasPlateSummary = hasGraphableData(parsedSelectedSummary);
 
   const generateReport = async () => {
@@ -322,6 +446,62 @@ export function DataAnalysisPage() {
     setHasReport(false);
     setStreamError(null);
     setIsStreaming(false);
+    if (compareAbortRef.current) compareAbortRef.current.abort();
+    setCompareId(null);
+    setCompareReport("");
+    setComparing(false);
+    setCompareError(null);
+  };
+
+  const runCompare = async () => {
+    if (!selectedId || !compareId) return;
+    if (compareAbortRef.current) compareAbortRef.current.abort();
+    const controller = new AbortController();
+    compareAbortRef.current = controller;
+
+    setComparing(true);
+    setCompareReport("");
+    setCompareError(null);
+
+    try {
+      const response = await apiFetch(`/api/experiments/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ experiment_a_id: selectedId, experiment_b_id: compareId }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error ?? "Request failed");
+      }
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.content) setCompareReport((prev) => prev + data.content);
+              if (data.error) setCompareError("The comparison could not be generated. Please try again.");
+            } catch {}
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setCompareError("The comparison could not be generated. Please try again.");
+      }
+    } finally {
+      setComparing(false);
+    }
   };
 
   return (
@@ -466,6 +646,62 @@ export function DataAnalysisPage() {
                       {isStreaming && (
                         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />
                       )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Compare — pick a second experiment and stream an AI comparison. */}
+            <div className="pt-2">
+              <Card className="border-primary/20 dark:bg-card/80">
+                <CardHeader className="pb-3 border-b border-border">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <GitCompare className="h-5 w-5 text-primary" />
+                    Compare with another experiment
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    See what changed between two runs and why one worked and the other didn’t.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <Select
+                      value={compareId?.toString() ?? ""}
+                      onValueChange={(v) => { setCompareId(parseInt(v)); setCompareReport(""); setCompareError(null); }}
+                    >
+                      <SelectTrigger className="w-full sm:max-w-xs">
+                        <SelectValue placeholder="Choose an experiment to compare…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(allExperiments ?? []).filter((e) => e.id !== selectedId).map((exp) => (
+                          <SelectItem key={exp.id} value={exp.id.toString()}>
+                            <span className="flex items-center gap-2">
+                              <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" />
+                              {exp.name}
+                              <span className="text-xs text-muted-foreground ml-1">({exp.assay_type})</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={runCompare} disabled={!compareId || comparing} className="gap-1.5">
+                      {comparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitCompare className="h-3.5 w-3.5" />}
+                      {comparing ? "Comparing…" : "Compare"}
+                    </Button>
+                  </div>
+
+                  {compareError && (
+                    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-destructive">{compareError}</p>
+                    </div>
+                  )}
+
+                  {(compareReport || comparing) && (
+                    <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{compareReport}</ReactMarkdown>
+                      {comparing && <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />}
                     </div>
                   )}
                 </CardContent>

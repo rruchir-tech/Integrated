@@ -7,7 +7,7 @@ import {
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
-import { assayGuidanceBlock } from "../lib/assayKnowledge";
+import { analysisKnowledgeBlock } from "../lib/assayKnowledge";
 import { getRequestUserId } from "../lib/requestUser";
 import { aiRateLimiter } from "../middlewares/rateLimit";
 import { assertMaxChars } from "../lib/requestLimits";
@@ -261,7 +261,7 @@ router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res
 
     let systemInstruction = LAB_SYSTEM_PROMPT;
     if (exp) {
-      systemInstruction += `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}`;
+      systemInstruction += `\n\n${analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}`;
     }
     systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${content}`;
 

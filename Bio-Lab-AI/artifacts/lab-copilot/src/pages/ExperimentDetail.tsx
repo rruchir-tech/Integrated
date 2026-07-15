@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AttachDataCard } from "@/components/experiment/AttachDataCard";
 import { CommentsPanel } from "@/components/experiment/CommentsPanel";
 import { ExperimentTasksPanel } from "@/components/experiment/ExperimentTasksPanel";
 import { RecommendationActions } from "@/components/experiment/RecommendationActions";
@@ -391,6 +392,15 @@ export function ExperimentDetail() {
               </motion.div>
             )}
 
+            {!experiment.raw_data_json && (
+              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}>
+                <AttachDataCard
+                  experimentId={expId}
+                  onAttached={() => queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(expId) })}
+                />
+              </motion.div>
+            )}
+
             {rawData && isPlate96 && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
                 <Card className="hover:border-l-2 hover:border-l-primary transition-all">
@@ -657,6 +667,24 @@ export function ExperimentDetail() {
                         </div>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {experiment.raw_data_json && !rawData && (
+              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>
+                <Card className="border-yellow-500/30 bg-yellow-500/5">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">Uploaded data couldn't be displayed</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          The stored results for this experiment are unreadable. Re-upload the plate file by editing this experiment, or create a new one from a fresh Gen5 export.
+                        </p>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
