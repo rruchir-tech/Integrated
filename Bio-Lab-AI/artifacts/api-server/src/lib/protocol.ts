@@ -14,6 +14,11 @@ export interface StructuredProtocol {
   // ambiguities, missing controls. Surfaced to the user as suggestions, not
   // silently applied, so the scientist stays in control of the final SOP.
   review_notes: string[];
+  // Populated only when refining an existing protocol — a plain-language list of
+  // what actually changed vs. the previous version, so the scientist can tell
+  // whether their refinement note took effect instead of re-reading the whole
+  // protocol to spot the diff themselves. Empty on first generation.
+  changes_summary: string[];
 }
 
 export const PROTOCOL_JSON_FORMAT = `{
@@ -24,7 +29,8 @@ export const PROTOCOL_JSON_FORMAT = `{
   "steps": ["numbered, actionable step with concentrations/volumes/timings", "..."],
   "expected_readout": "what is measured and how it is interpreted",
   "suggested_analysis": "the quantification method to apply (e.g. 4PL IC50, Z'-factor, standard curve)",
-  "review_notes": ["a specific gap, ambiguity, or missing control in THIS protocol — be a critical reviewer, not a cheerleader", "..."]
+  "review_notes": ["a specific gap, ambiguity, or missing control in THIS protocol — be a critical reviewer, not a cheerleader", "..."],
+  "changes_summary": ["ONLY if refining an existing protocol: a specific, concrete change you just made, e.g. 'Increased replicate count from 2 to 3 per dose' — omit or leave empty if this is the first draft"]
 }`;
 
 // Keep only genuine strings — the AI occasionally nests an object where a plain
@@ -46,6 +52,7 @@ export function parseStructuredProtocol(text: string): StructuredProtocol | null
       expected_readout: typeof parsed.expected_readout === "string" ? parsed.expected_readout : "",
       suggested_analysis: typeof parsed.suggested_analysis === "string" ? parsed.suggested_analysis : "",
       review_notes: stringArray(parsed.review_notes),
+      changes_summary: stringArray(parsed.changes_summary),
     };
   } catch {
     return null;

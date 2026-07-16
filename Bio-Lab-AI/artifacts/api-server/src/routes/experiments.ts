@@ -469,6 +469,8 @@ ${JSON.stringify(existingProtocol, null, 2)}
 
 SCIENTIST'S REFINEMENT NOTE: ${refineNote || "(none — just re-review and tighten the existing protocol)"}${chatContext}
 
+IMPORTANT: also fill "changes_summary" — a specific, concrete list of what you actually changed vs. the existing protocol above (e.g. "Increased replicate count from 2 to 3 per dose", "Added a vehicle-only column as blank control"). If you changed nothing, say so explicitly rather than leaving it empty.
+
 Respond in this exact JSON format:
 ${PROTOCOL_JSON_FORMAT}`
       : `Design a protocol for this experiment.
@@ -485,9 +487,14 @@ ${PROTOCOL_JSON_FORMAT}`;
       return res.status(502).json({ error: "The AI returned a malformed protocol. Please try again." });
     }
 
+    // changes_summary is a one-time diff for THIS refinement, not a durable
+    // protocol property — strip it before persisting so it doesn't get compared
+    // against as "EXISTING PROTOCOL" on the next refine. Still returned below so
+    // the frontend can show it once, right after this call.
+    const { changes_summary, ...protocolToPersist } = protocol;
     await db
       .update(experiments)
-      .set({ protocol_json: JSON.stringify(protocol), updated_at: new Date() })
+      .set({ protocol_json: JSON.stringify(protocolToPersist), updated_at: new Date() })
       .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
 
     return res.json(protocol);

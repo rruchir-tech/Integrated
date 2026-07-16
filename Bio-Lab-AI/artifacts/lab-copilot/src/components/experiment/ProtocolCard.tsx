@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardList, Loader2, Sparkles, UploadCloud, FileText,
-  Beaker, ShieldCheck, LayoutGrid, Target, BarChart3, Lightbulb, RotateCcw,
+  Beaker, ShieldCheck, LayoutGrid, Target, BarChart3, Lightbulb, RotateCcw, History,
 } from "lucide-react";
 
 interface StructuredProtocol {
@@ -18,6 +18,7 @@ interface StructuredProtocol {
   expected_readout: string;
   suggested_analysis: string;
   review_notes: string[];
+  changes_summary?: string[];
 }
 
 function parseProtocol(raw: string | null): StructuredProtocol | null {
@@ -52,6 +53,11 @@ export function ProtocolCard({
   const [uploading, setUploading] = useState(false);
   const [refineNote, setRefineNote] = useState("");
   const [showRefine, setShowRefine] = useState(false);
+  // What the AI actually changed on the last refine — a one-time diff, not
+  // persisted with the protocol (see backend: stripped before saving), so the
+  // scientist can tell whether their note took effect instead of re-reading the
+  // whole protocol to spot it themselves.
+  const [lastChanges, setLastChanges] = useState<string[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // MVP progress tracking: manual checkboxes per step, persisted locally. The
@@ -86,6 +92,7 @@ export function ProtocolCard({
 
   const generate = async () => {
     setGenerating(true);
+    setLastChanges(null);
     try {
       const resp = await apiFetch(`/api/experiments/${experimentId}/protocol/generate`, {
         method: "POST",
@@ -95,6 +102,10 @@ export function ProtocolCard({
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "Generation failed" }));
         throw new Error(err.error || "Generation failed");
+      }
+      const data = await resp.json().catch(() => null) as StructuredProtocol | null;
+      if (data?.changes_summary && data.changes_summary.length > 0) {
+        setLastChanges(data.changes_summary);
       }
       toast({ title: protocol ? "Protocol refined" : "Protocol generated", description: "Review the steps and AI suggestions below." });
       setRefineNote("");
@@ -117,6 +128,7 @@ export function ProtocolCard({
       return;
     }
     setUploading(true);
+    setLastChanges(null);
     try {
       const b64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -250,6 +262,22 @@ export function ProtocolCard({
                 {generating ? "Refining…" : "Apply"}
               </Button>
             </div>
+          </div>
+        )}
+
+        {lastChanges && lastChanges.length > 0 && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2 flex items-center gap-1.5">
+              <History className="h-3.5 w-3.5" /> What changed in this refinement
+            </div>
+            <ul className="space-y-1 text-sm">
+              {lastChanges.map((c, i) => (
+                <li key={i} className="flex gap-2 text-emerald-700 dark:text-emerald-300/90">
+                  <span>•</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
