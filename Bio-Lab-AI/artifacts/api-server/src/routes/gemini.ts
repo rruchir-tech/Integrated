@@ -7,7 +7,8 @@ import {
   ListGeminiConversationsQueryParams,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
-import { analysisKnowledgeBlock } from "../lib/assayKnowledge";
+import { analysisKnowledgeBlock, assayGuidanceBlock } from "../lib/assayKnowledge";
+import { parseStructuredProtocol } from "../lib/protocol";
 import { getRequestUserId } from "../lib/requestUser";
 import { aiRateLimiter } from "../middlewares/rateLimit";
 import { assertMaxChars } from "../lib/requestLimits";
@@ -16,6 +17,33 @@ const router: IRouter = Router();
 
 const LAB_SYSTEM_PROMPT = `You are an expert cell biologist and lab copilot with access to this lab's full experiment history.
 Think like a bench scientist: when asked about an experiment, reason from its protocol/notes — what was it trying to test, what result was expected, and does the data match? If results are off, diagnose the likely cause (distinguish a technical problem from a real biological finding) and cite the specific wells/numbers. Always reference specific experiments by name. Be specific, quantitative, and actionable.`;
+
+// Chat is a conversation, not a report — the opposite tone from protocol/analysis
+// generation, which stays thorough on purpose. Applied to chat prompts only.
+const CHAT_TONE_INSTRUCTION = `\n\nTone: this is a live chat, not a report. Talk like a knowledgeable colleague, not a document — short, direct replies (usually 2-5 sentences unless the scientist asks for depth or a list). Don't restate the question, don't pad with preamble, don't over-explain something already established earlier in the conversation. Ask one clarifying question at a time rather than a long list.`;
+
+// Design-stage mode: no protocol exists yet for this experiment. The AI's job here
+// is to interview the scientist — gather what a good protocol needs (cell line,
+// compound/target, materials on hand, dose range, replicate count, timeline,
+// constraints) BEFORE a protocol gets generated — not to write the protocol itself
+// (that happens via the dedicated "Generate protocol" action, which reads this
+// conversation for context). Keep the interview short and one question at a time.
+const PROTOCOL_INTERVIEW_INSTRUCTION = `\n\nThis experiment has no protocol yet — you are in DESIGN mode. Your job right now is to ask focused clarifying questions to gather what's needed for a solid protocol: the specific goal, cell line/model, compound or target, materials/equipment on hand, dose or condition range, replicate count, and any constraints (budget, time, equipment). Ask ONE question at a time, build on what's already been said, and don't write the actual protocol yourself — that happens separately once enough is gathered. If the scientist says they're ready or asks you to just generate it, tell them to use the "Generate protocol" action so it can produce the full structured document.`;
+
+// Running-stage mode: a protocol is finalized. Ground troubleshooting in what the
+// protocol actually says, and help track progress against it conversationally.
+function runningStageInstruction(protocol: { objective: string; materials: string[]; controls: string[]; steps: string[] } | null): string {
+  if (!protocol) return "";
+  const steps = protocol.steps.length ? protocol.steps.map((s, i) => `${i + 1}. ${s}`).join("\n") : "(none listed)";
+  return `\n\nTHIS EXPERIMENT'S FINALIZED PROTOCOL:
+Objective: ${protocol.objective || "(not stated)"}
+Materials: ${protocol.materials.join("; ") || "(none listed)"}
+Controls: ${protocol.controls.join("; ") || "(none listed)"}
+Steps:
+${steps}
+
+You are now in RUN/TROUBLESHOOT mode. The scientist may report progress ("we finished step 2", "step 3 looked off") or ask troubleshooting questions — ground your answers in the actual steps/materials/controls above, and when something looks wrong, distinguish a technical issue (pipetting, timing, reagent) from a real biological finding, citing the specific step.`;
+}
 
 const GENERAL_SYSTEM_PROMPT = `You are an expert biotech and cell biology advisor.
 Answer general scientific questions, explain concepts, help with protocol design, and discuss biotech topics. Be concise and scientific.`;
@@ -259,10 +287,19 @@ router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res
       .where(eq(experiments.user_id, userId))
       .orderBy(desc(experiments.date));
 
+    const protocol = exp?.protocol_json ? parseStructuredProtocol(exp.protocol_json) : null;
+
     let systemInstruction = LAB_SYSTEM_PROMPT;
     if (exp) {
-      systemInstruction += `\n\n${analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}`;
+      // Before a protocol exists, ground in just the assay's domain knowledge (what
+      // to ask about) — the full data-quantification checklist isn't relevant yet
+      // and would distract from the interview. Once a protocol is finalized, use
+      // the full knowledge block plus the protocol content itself.
+      systemInstruction += protocol
+        ? `\n\n${analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}${runningStageInstruction(protocol)}`
+        : `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}${PROTOCOL_INTERVIEW_INSTRUCTION}`;
     }
+    systemInstruction += CHAT_TONE_INSTRUCTION;
     systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -425,7 +462,7 @@ router.post("/projects/:id/chat", aiRateLimiter, async (req, res) => {
     }
 
     const systemInstruction =
-      `${PROJECT_SYSTEM_PROMPT}\n\nPROJECT: ${proj.name}\nGOAL: ${proj.goal ?? "(not specified)"}\n\n` +
+      `${PROJECT_SYSTEM_PROMPT}${CHAT_TONE_INSTRUCTION}\n\nPROJECT: ${proj.name}\nGOAL: ${proj.goal ?? "(not specified)"}\n\n` +
       `EXPERIMENTS IN THIS PROJECT:\n${projExperiments.length ? buildLabHistory(projExperiments) : "(none logged yet)"}` +
       docsContext +
       `\n\nSCIENTIST QUESTION: ${messageContent}`;
@@ -563,11 +600,11 @@ router.post("/gemini/general-chat", aiRateLimiter, async (req, res) => {
       .limit(30);
 
     const systemInstruction =
-      experimentRows.length > 0
+      (experimentRows.length > 0
         ? `${LAB_SYSTEM_PROMPT}\n\nThis scientist's most recent experiments:\n${buildLabHistory(
             experimentRows,
           )}\n\nWhen the question relates to their work, ground your answer in these experiments and cite them by name. For general scientific questions, answer normally.`
-        : GENERAL_SYSTEM_PROMPT;
+        : GENERAL_SYSTEM_PROMPT) + CHAT_TONE_INSTRUCTION;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");

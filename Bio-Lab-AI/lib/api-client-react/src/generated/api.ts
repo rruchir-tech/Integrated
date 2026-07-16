@@ -635,6 +635,90 @@ export const useDeleteExperiment = <
 };
 
 /**
+ * @summary Generate a full structured data analysis report (SSE stream)
+ */
+export const getGenerateDataAnalysisReportUrl = (id: number) => {
+  return `/api/experiments/${id}/data-analysis`;
+};
+
+export const generateDataAnalysisReport = async (
+  id: number,
+  options?: RequestInit,
+): Promise<unknown> => {
+  return customFetch<unknown>(getGenerateDataAnalysisReportUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getGenerateDataAnalysisReportMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateDataAnalysisReport>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateDataAnalysisReport>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["generateDataAnalysisReport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateDataAnalysisReport>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return generateDataAnalysisReport(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateDataAnalysisReportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateDataAnalysisReport>>
+>;
+
+export type GenerateDataAnalysisReportMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Generate a full structured data analysis report (SSE stream)
+ */
+export const useGenerateDataAnalysisReport = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateDataAnalysisReport>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateDataAnalysisReport>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getGenerateDataAnalysisReportMutationOptions(options));
+};
+
+/**
  * @summary Generate AI analysis and suggestions for an experiment
  */
 export const getAnalyzeExperimentUrl = (id: number) => {

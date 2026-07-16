@@ -39,7 +39,7 @@ const formSchema = z.object({
   assay_type: z.string().min(1, "Assay type is required"),
   instrument: z.string().min(1, "Instrument is required"),
   notes: z.string().optional(),
-  status: z.enum(["success", "failed", "unknown", "in_progress"]),
+  status: z.enum(["designing", "ready", "running", "success", "failed", "unknown", "in_progress"]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -213,7 +213,10 @@ export function ExperimentEdit() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="designing">Designing</SelectItem>
+                          <SelectItem value="ready">Ready to run</SelectItem>
+                          <SelectItem value="running">Running</SelectItem>
+                          <SelectItem value="in_progress">In Progress (legacy)</SelectItem>
                           <SelectItem value="success">Success</SelectItem>
                           <SelectItem value="failed">Failed</SelectItem>
                           <SelectItem value="unknown">Unknown</SelectItem>

@@ -13,7 +13,12 @@ export const experiments = pgTable("experiments", {
   assay_type: text("assay_type").notNull(),
   instrument: text("instrument").notNull().default("Generic"),
   notes: text("notes"),
-  status: text("status").notNull().default("unknown"),
+  status: text("status").notNull().default("designing"),
+  // Structured protocol (objective, materials, controls, steps, plate layout,
+  // expected readout, suggested analysis, AI review notes) as JSON. Set by either
+  // the AI-design flow or a parsed .docx SOP upload — see routes/experiments.ts
+  // POST /:id/protocol/generate and /:id/protocol/upload.
+  protocol_json: text("protocol_json"),
   file_name: text("file_name"),
   raw_data_json: text("raw_data_json"),
   ai_summary: text("ai_summary"),

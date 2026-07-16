@@ -17,8 +17,11 @@ export const features = {
   compare: enableAll,
   templates: enableAll,
   tasks: enableAll,
-  // Design-first workflow: create an experiment from a goal → generate a protocol →
-  // attach data later → quantify. On by design now (was off during the narrow launch).
+  // Comments are low-value for a single-user workspace today; feature-flagged
+  // off until this is a multi-scientist lab tool (the long-term vision).
+  comments: enableAll,
+  // Design-first workflow: create an experiment from a goal → design a protocol
+  // (upload SOP or AI-generate) → attach data later → quantify. On by default.
   protocolDesigner: true,
   // Core plate-reader path — always on.
   dataAnalysis: true,

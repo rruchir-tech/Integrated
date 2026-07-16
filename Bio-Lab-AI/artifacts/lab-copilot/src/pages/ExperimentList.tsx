@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
-import { Plus, Search, Filter, Pencil, Eye, CheckCircle2, AlertTriangle, Loader2, HelpCircle, X } from "lucide-react";
+import { Plus, Search, Filter, Pencil, Eye, CheckCircle2, AlertTriangle, Loader2, HelpCircle, X, Sparkles, Clock, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -21,6 +21,9 @@ const MotionButton = motion.create(Button);
 
 const STATUS_FILTERS = [
   { value: "all", label: "All", icon: null, color: "" },
+  { value: "designing", label: "Designing", icon: Sparkles, color: "text-violet-400" },
+  { value: "ready", label: "Ready to run", icon: Clock, color: "text-amber-400" },
+  { value: "running", label: "Running", icon: Activity, color: "text-cyan-400" },
   { value: "success", label: "Success", icon: CheckCircle2, color: "text-emerald-400" },
   { value: "in_progress", label: "In Progress", icon: Loader2, color: "text-primary" },
   { value: "failed", label: "Failed", icon: AlertTriangle, color: "text-red-400" },

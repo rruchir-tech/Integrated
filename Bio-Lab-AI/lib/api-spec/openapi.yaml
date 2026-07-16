@@ -374,7 +374,7 @@ components:
           type: string
         status:
           type: string
-          enum: [success, failed, unknown, in_progress]
+          enum: [designing, ready, running, success, failed, unknown, in_progress]
         created_at:
           type: string
           format: date-time
@@ -405,7 +405,11 @@ components:
           nullable: true
         status:
           type: string
-          enum: [success, failed, unknown, in_progress]
+          enum: [designing, ready, running, success, failed, unknown, in_progress]
+        protocol_json:
+          type: string
+          nullable: true
+          description: Structured protocol (objective, materials, controls, steps, review notes) as JSON
         file_name:
           type: string
           nullable: true
@@ -453,8 +457,8 @@ components:
           type: string
         status:
           type: string
-          enum: [success, failed, unknown, in_progress]
-          default: "unknown"
+          enum: [designing, ready, running, success, failed, unknown, in_progress]
+          default: "designing"
         file_name:
           type: string
         file_content_b64:
@@ -480,7 +484,7 @@ components:
           type: string
         status:
           type: string
-          enum: [success, failed, unknown, in_progress]
+          enum: [designing, ready, running, success, failed, unknown, in_progress]
 
     AnalyzeExperimentBody:
       type: object

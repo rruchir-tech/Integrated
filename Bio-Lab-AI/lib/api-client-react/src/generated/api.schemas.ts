@@ -17,6 +17,9 @@ export type ExperimentSummaryStatus =
   (typeof ExperimentSummaryStatus)[keyof typeof ExperimentSummaryStatus];
 
 export const ExperimentSummaryStatus = {
+  designing: "designing",
+  ready: "ready",
+  running: "running",
   success: "success",
   failed: "failed",
   unknown: "unknown",
@@ -37,6 +40,9 @@ export type ExperimentStatus =
   (typeof ExperimentStatus)[keyof typeof ExperimentStatus];
 
 export const ExperimentStatus = {
+  designing: "designing",
+  ready: "ready",
+  running: "running",
   success: "success",
   failed: "failed",
   unknown: "unknown",
@@ -51,6 +57,8 @@ export interface Experiment {
   instrument: string;
   notes?: string | null;
   status: ExperimentStatus;
+  /** Structured protocol (objective, materials, controls, steps, review notes) as JSON */
+  protocol_json?: string | null;
   file_name?: string | null;
   raw_data_json?: string | null;
   ai_summary?: string | null;
@@ -64,6 +72,9 @@ export type CreateExperimentBodyStatus =
   (typeof CreateExperimentBodyStatus)[keyof typeof CreateExperimentBodyStatus];
 
 export const CreateExperimentBodyStatus = {
+  designing: "designing",
+  ready: "ready",
+  running: "running",
   success: "success",
   failed: "failed",
   unknown: "unknown",
@@ -86,6 +97,9 @@ export type UpdateExperimentBodyStatus =
   (typeof UpdateExperimentBodyStatus)[keyof typeof UpdateExperimentBodyStatus];
 
 export const UpdateExperimentBodyStatus = {
+  designing: "designing",
+  ready: "ready",
+  running: "running",
   success: "success",
   failed: "failed",
   unknown: "unknown",

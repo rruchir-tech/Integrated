@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "wouter";
-import { 
-  useGetExperiment, 
+import {
+  useGetExperiment,
   getGetExperimentQueryKey,
   useAnalyzeExperiment,
   useUpdateExperiment,
+  type UpdateExperimentMutationBody,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { format, parseISO } from "date-fns";
 import {
   BrainCircuit, Calendar, FlaskConical, Microscope, FileText,
   CheckCircle2, AlertTriangle, Pencil, MessageSquare, CheckSquare, FileDown,
-  Download, Image,
+  Download, Image, Loader2,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { CopilotChat } from "@/components/chat/CopilotChat";
@@ -27,12 +28,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AttachDataCard } from "@/components/experiment/AttachDataCard";
+import { ProtocolCard } from "@/components/experiment/ProtocolCard";
 import { CommentsPanel } from "@/components/experiment/CommentsPanel";
 import { ExperimentTasksPanel } from "@/components/experiment/ExperimentTasksPanel";
 import { RecommendationActions } from "@/components/experiment/RecommendationActions";
 import { printExperimentReport } from "@/lib/printExperimentReport";
 import { computeControlMetrics, ROLE_COLOR, ROLE_LABEL, ROLE_SHORT, type WellRole } from "@/lib/plateMetrics";
 import { DoseResponseCard } from "@/components/DoseResponseCard";
+import { isEnabled } from "@/lib/features";
+import { apiFetch } from "@/lib/apiFetch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ROW_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
@@ -224,6 +235,27 @@ export function ExperimentDetail() {
     }
   };
 
+  // Experiments created before chat-on-create shipped have no conversation yet —
+  // let the user start one on demand instead of forcing them through /analyze.
+  const [startingChat, setStartingChat] = useState(false);
+  const startChat = async () => {
+    if (!experiment) return;
+    setStartingChat(true);
+    try {
+      const resp = await apiFetch("/api/gemini/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `Copilot: ${experiment.name}`, experimentId: expId }),
+      });
+      if (!resp.ok) throw new Error("Failed to start chat");
+      queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(expId) });
+    } catch {
+      toast({ title: "Couldn't start chat", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setStartingChat(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -312,7 +344,7 @@ export function ExperimentDetail() {
   const SIDE_TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
     { key: "suggestions", label: "Next Steps", icon: AlertTriangle },
     { key: "tasks", label: "Tasks", icon: CheckSquare },
-    { key: "comments", label: "Comments", icon: MessageSquare },
+    ...(isEnabled("comments") ? [{ key: "comments" as TabKey, label: "Comments", icon: MessageSquare }] : []),
   ];
 
   return (
@@ -338,6 +370,24 @@ export function ExperimentDetail() {
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:flex-shrink-0">
           <StatusBadge status={experiment.status} />
+          <Select
+            value={experiment.status}
+            onValueChange={(v) =>
+              updateMutation.mutate({ id: expId, data: { status: v as UpdateExperimentMutationBody["status"] } })
+            }
+          >
+            <SelectTrigger className="h-9 w-[130px] text-xs" title="Experiment stage">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="designing">Designing</SelectItem>
+              <SelectItem value="ready">Ready to run</SelectItem>
+              <SelectItem value="running">Running</SelectItem>
+              {!["designing", "ready", "running"].includes(experiment.status) && (
+                <SelectItem value={experiment.status}>{experiment.status}</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
           <Link href={`/experiments/${expId}/edit`}>
             <MotionButton variant="outline" className="gap-2" whileTap={{ scale: 0.97 }}>
               <Pencil className="h-4 w-4" />
@@ -382,7 +432,7 @@ export function ExperimentDetail() {
                   <CardHeader className="py-4">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <FileText className="h-5 w-5" />
-                      Notes
+                      Context for the AI
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -392,7 +442,19 @@ export function ExperimentDetail() {
               </motion.div>
             )}
 
-            {!experiment.raw_data_json && (
+            {isEnabled("protocolDesigner") && (
+              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.12 }}>
+                <ProtocolCard
+                  experimentId={expId}
+                  protocolJson={experiment.protocol_json ?? null}
+                  onUpdated={() => queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(expId) })}
+                />
+              </motion.div>
+            )}
+
+            {/* Data upload is de-emphasized during design — it only appears once the
+                experiment has moved past the "designing" stage. */}
+            {!experiment.raw_data_json && experiment.status !== "designing" && (
               <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}>
                 <AttachDataCard
                   experimentId={expId}
@@ -723,7 +785,13 @@ export function ExperimentDetail() {
                 <CardContent className="flex flex-col items-center justify-center p-8 text-center h-48">
                   <BrainCircuit className="h-12 w-12 text-primary/50 mb-4" />
                   <p className="text-muted-foreground font-medium font-mono">No active conversation</p>
-                  <p className="text-sm text-muted-foreground mt-1">Click "Bioalyze" to start the copilot chat.</p>
+                  <p className="text-sm text-muted-foreground mt-1 mb-4">
+                    This experiment predates chat-on-create — start one to design the protocol or ask anything.
+                  </p>
+                  <Button size="sm" disabled={startingChat} onClick={startChat} className="gap-2">
+                    {startingChat && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Start chat
+                  </Button>
                 </CardContent>
               </Card>
             )}

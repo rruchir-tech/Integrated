@@ -291,7 +291,9 @@ export function Dashboard() {
   }
 
   const successRate = dashboard.total_experiments > 0 ? Math.round(((dashboard.by_status['success'] || 0) / dashboard.total_experiments) * 100) : 0;
-  const activeRuns = dashboard.by_status['in_progress'] || 0;
+  // "running" is the new design-first equivalent of the legacy "in_progress" —
+  // count both so active runs from either lifecycle show up.
+  const activeRuns = (dashboard.by_status['in_progress'] || 0) + (dashboard.by_status['running'] || 0);
   const latestRun = dashboard.recent_experiments[0]?.name ?? "No recent run";
 
   return (
@@ -332,7 +334,7 @@ export function Dashboard() {
           },
           {
             title: "In Progress",
-            value: dashboard.by_status['in_progress'] || 0,
+            value: activeRuns,
             icon: Beaker,
             color: "text-cyan-400",
             sub: null
@@ -524,12 +526,14 @@ export function Dashboard() {
                       const statusColor =
                         exp.status === "success" ? "bg-emerald-500" :
                         exp.status === "failed" ? "bg-red-500" :
-                        exp.status === "in_progress" ? "bg-cyan-400" :
+                        exp.status === "in_progress" || exp.status === "running" ? "bg-cyan-400" :
+                        exp.status === "designing" ? "bg-violet-400" :
+                        exp.status === "ready" ? "bg-amber-400" :
                         "bg-muted-foreground";
                       const StatusIcon =
                         exp.status === "success" ? CheckCircle2 :
                         exp.status === "failed" ? AlertTriangle :
-                        exp.status === "in_progress" ? TrendingUp :
+                        exp.status === "in_progress" || exp.status === "running" ? TrendingUp :
                         Activity;
                       return (
                         <motion.div

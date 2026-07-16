@@ -42,7 +42,7 @@ const templates = [
       "Add MTT (5 mg/mL) for 4 h, then dissolve formazan in DMSO before reading.",
     expected_columns_json: JSON.stringify(["well", "absorbance_570", "absorbance_630", "corrected_od", "% viability"]),
     expected_control_rule: "Mean untreated ≥ 1.5 OD; CV% ≤ 15 for controls; Z' ≥ 0.5",
-    expected_status_default: "in_progress",
+    expected_status_default: "designing",
     ai_prompt_hint:
       "This is an MTT cell viability assay. Calculate % viability relative to untreated controls. " +
       "Fit a 4-parameter logistic (4PL) curve to determine IC50 with 95% CI. " +
@@ -66,7 +66,7 @@ const templates = [
       "Read at 450 nm, reference at 570 nm. Subtract blank before curve fitting.",
     expected_columns_json: JSON.stringify(["well", "absorbance_450", "absorbance_570", "corrected_od", "concentration_pg_ml"]),
     expected_control_rule: "R² of standard curve ≥ 0.99; CV% between duplicates ≤ 10; blank ≤ 0.05 OD",
-    expected_status_default: "in_progress",
+    expected_status_default: "designing",
     ai_prompt_hint:
       "This is a sandwich ELISA. Fit a 4PL standard curve to the known standards (subtract blank first). " +
       "Report R² and flag if < 0.99. Interpolate sample concentrations from the curve; " +
@@ -90,7 +90,7 @@ const templates = [
       "Export as .csv or .xlsx from CFX Maestro / QuantStudio Design & Analysis.",
     expected_columns_json: JSON.stringify(["well", "sample", "target", "Cq", "Cq_mean", "delta_Ct", "delta_delta_Ct", "fold_change"]),
     expected_control_rule: "NTC must have no amplification (Cq = 0 or undetermined); replicate SD ≤ 0.3 Cq; efficiency 90–110%",
-    expected_status_default: "in_progress",
+    expected_status_default: "designing",
     ai_prompt_hint:
       "This is a qPCR gene expression experiment using ΔΔCt. " +
       "Calculate ΔCt = target Ct − reference Ct for each sample. " +
@@ -120,7 +120,7 @@ const templates = [
       "Export .fcs files; analyze in FlowJo or equivalent.",
     expected_columns_json: JSON.stringify(["sample", "total_events", "%live", "%early_apoptosis", "%late_apoptosis", "%necrotic"]),
     expected_control_rule: "Untreated control: live ≥ 90%; Positive control (e.g. staurosporine): apoptosis > 30%",
-    expected_status_default: "in_progress",
+    expected_status_default: "designing",
     ai_prompt_hint:
       "This is a flow cytometry apoptosis assay using Annexin V/PI staining. " +
       "Report % live, % early apoptosis (Annexin V+/PI−), % late apoptosis (Annexin V+/PI+), and % necrotic (Annexin V−/PI+) per sample. " +
@@ -145,7 +145,7 @@ const templates = [
       "Upload image file — AI will estimate band intensities and normalization.",
     expected_columns_json: JSON.stringify(["lane", "sample", "target_intensity", "loading_control_intensity", "normalized_ratio", "fold_change_vs_ctrl"]),
     expected_control_rule: "Loading control CV% ≤ 15 across lanes; no band at target MW in negative control lane",
-    expected_status_default: "in_progress",
+    expected_status_default: "designing",
     ai_prompt_hint:
       "This is a western blot protein expression experiment. " +
       "Estimate relative band intensities from the image. Normalize each target band to the loading control in the same lane. " +

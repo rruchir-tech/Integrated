@@ -8,11 +8,13 @@ import {
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
-import { analysisKnowledgeBlock, QUANTIFICATION_PROTOCOL } from "../lib/assayKnowledge";
+import { analysisKnowledgeBlock, assayGuidanceBlock, QUANTIFICATION_PROTOCOL } from "../lib/assayKnowledge";
+import { PROTOCOL_JSON_FORMAT, parseStructuredProtocol, type StructuredProtocol } from "../lib/protocol";
 import { getRequestUserId } from "../lib/requestUser";
 import { aiRateLimiter } from "../middlewares/rateLimit";
 import { assertMaxChars } from "../lib/requestLimits";
 import ExcelJS from "exceljs";
+import mammoth from "mammoth";
 
 const router: IRouter = Router();
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
@@ -62,7 +64,11 @@ function formatMetric(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "n/a";
 }
 
-function decodeUpload(b64: string, filename: string): Buffer {
+function decodeUpload(
+  b64: string,
+  filename: string,
+  opts: { allowedExt?: string[]; typeErrorMessage?: string } = {},
+): Buffer {
   if (b64.length > MAX_UPLOAD_BASE64_CHARS) {
     throw new UploadInputError(`File too large. Maximum upload size is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`, 413);
   }
@@ -70,9 +76,10 @@ function decodeUpload(b64: string, filename: string): Buffer {
   if (buffer.byteLength > MAX_UPLOAD_BYTES) {
     throw new UploadInputError(`File too large. Maximum upload size is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`, 413);
   }
+  const allowedExt = opts.allowedExt ?? ["csv", "tsv", "txt", "xlsx"];
   const ext = filename.split(".").pop()?.toLowerCase();
-  if (!ext || !["csv", "tsv", "txt", "xlsx"].includes(ext)) {
-    throw new UploadInputError("Unsupported file type. Upload CSV, TSV, TXT, or XLSX files.");
+  if (!ext || !allowedExt.includes(ext)) {
+    throw new UploadInputError(opts.typeErrorMessage ?? "Unsupported file type. Upload CSV, TSV, TXT, or XLSX files.");
   }
   return buffer;
 }
@@ -256,20 +263,33 @@ router.post("/experiments", async (req, res) => {
       rawDataJson = await parseFileContent(body.file_content_b64, body.file_name);
     }
 
-    const inserted = await db
-      .insert(experiments)
-      .values({
-        user_id: userId,
-        name: body.name,
-        date: body.date,
-        assay_type: body.assay_type,
-        instrument: body.instrument ?? "Generic",
-        notes: body.notes ?? null,
-        status: body.status ?? "unknown",
-        file_name: body.file_name ?? null,
-        raw_data_json: rawDataJson,
-      })
-      .returning();
+    // Create the conversation up front so chat is available from the moment the
+    // experiment exists — design-time discussion shouldn't be gated behind running
+    // an analysis (which previously created it lazily inside /analyze). Wrapped in
+    // a transaction so a failed experiment insert can't leave an orphaned
+    // conversation row behind.
+    const inserted = await db.transaction(async (tx) => {
+      const [conv] = await tx
+        .insert(conversations)
+        .values({ title: `Copilot: ${body.name}`, user_id: userId })
+        .returning();
+
+      return tx
+        .insert(experiments)
+        .values({
+          user_id: userId,
+          name: body.name,
+          date: body.date,
+          assay_type: body.assay_type,
+          instrument: body.instrument ?? "Generic",
+          notes: body.notes ?? null,
+          status: body.status ?? "designing",
+          file_name: body.file_name ?? null,
+          raw_data_json: rawDataJson,
+          conversation_id: conv.id,
+        })
+        .returning();
+    });
 
     return res.status(201).json(inserted[0]);
   } catch (err) {
@@ -375,6 +395,172 @@ router.post("/experiments/:id/data", async (req, res) => {
       return res.status(err.statusCode).json({ error: err.message });
     }
     return res.status(400).json({ error: "Could not attach data. Upload a valid CSV, TSV, TXT, or XLSX export." });
+  }
+});
+
+// Shared call: ask Gemini to produce/refine a structured protocol (with its own
+// critique) and parse the result. Used by both the AI-design and .docx-upload
+// paths so downstream storage/rendering never needs to know the source.
+async function structureProtocolWithAI(systemInstruction: string, userPrompt: string): Promise<StructuredProtocol | null> {
+  const response = await generateContentWithRetry({
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    config: {
+      systemInstruction,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  return parseStructuredProtocol(response.text ?? "{}");
+}
+
+// Design-time protocol generation/refinement. Synthesizes a structured, bench-ready
+// protocol from the experiment's goal/context plus any prior chat discussion (the
+// "AI design interview"), grounded in the matched assay's known controls and
+// quantification method. Always includes the AI's own critique (review_notes) so
+// the scientist sees suggestions rather than a black-box answer. Persists to
+// experiments.protocol_json; never changes status — the scientist finalizes manually.
+router.post("/experiments/:id/protocol/generate", aiRateLimiter, async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
+    const exp = await findOwnedExperiment(id, userId);
+    if (!exp) return res.status(404).json({ error: "Experiment not found" });
+
+    const body = requestBody(req.body);
+    let refineNote = "";
+    try {
+      refineNote = optionalString(body.refine_note) ? assertMaxChars(String(body.refine_note), "Refinement note") : "";
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
+
+    const existingProtocol = exp.protocol_json ? parseStructuredProtocol(exp.protocol_json) : null;
+
+    let chatContext = "";
+    if (exp.conversation_id) {
+      const chatHistory = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, exp.conversation_id))
+        .orderBy(messages.createdAt);
+      if (chatHistory.length > 0) {
+        chatContext = `\n\nDESIGN CONVERSATION SO FAR (use this for materials, ranges, constraints the scientist already specified):\n${chatHistory
+          .map((m) => `${m.role === "assistant" ? "AI" : "Scientist"}: ${m.content}`)
+          .join("\n")}`;
+      }
+    }
+
+    const assayGuidance = assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+
+    const systemInstruction = `You are an expert experimental designer for a cell and molecular biology lab, writing a rigorous, bench-ready SOP. Be as detailed and specific as the science requires: exact concentrations, volumes, timings, seeding densities, replicate counts, the plate/sample layout, and the exact controls needed. This document will be followed step-by-step at the bench, so thoroughness matters more than brevity here.
+
+${assayGuidance}
+
+Always end with "review_notes": a short, honestly critical list of gaps or ambiguities in the protocol you just wrote (e.g. missing a blank well, unspecified replicate count, no stated dose range) — you are reviewing your own work, not praising it. If it's genuinely solid, say so briefly instead of inventing issues.`;
+
+    const userPrompt = existingProtocol
+      ? `Refine the existing protocol below based on the scientist's note. Keep everything that still applies; change what the note asks for.
+
+EXISTING PROTOCOL:
+${JSON.stringify(existingProtocol, null, 2)}
+
+SCIENTIST'S REFINEMENT NOTE: ${refineNote || "(none — just re-review and tighten the existing protocol)"}${chatContext}
+
+Respond in this exact JSON format:
+${PROTOCOL_JSON_FORMAT}`
+      : `Design a protocol for this experiment.
+
+Name: ${exp.name}
+Goal / assay type: ${exp.assay_type}
+Context from the scientist: ${exp.notes ?? "(none provided — infer reasonable defaults and note assumptions in review_notes)"}${chatContext}
+
+Respond in this exact JSON format:
+${PROTOCOL_JSON_FORMAT}`;
+
+    const protocol = await structureProtocolWithAI(systemInstruction, userPrompt);
+    if (!protocol) {
+      return res.status(502).json({ error: "The AI returned a malformed protocol. Please try again." });
+    }
+
+    await db
+      .update(experiments)
+      .set({ protocol_json: JSON.stringify(protocol), updated_at: new Date() })
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
+
+    return res.json(protocol);
+  } catch (err) {
+    req.log.error({ err }, "Failed to generate protocol");
+    return res.status(500).json({ error: "Failed to generate protocol" });
+  }
+});
+
+// Upload an existing SOP as a .docx (scientists write these in Word/Drive, not
+// retyped into a form). Extracts the raw text, then runs it through the SAME
+// structuring pipeline as AI-design so the result renders identically regardless
+// of source — plus the AI's critique, same as the design path.
+router.post("/experiments/:id/protocol/upload", aiRateLimiter, async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
+    const exp = await findOwnedExperiment(id, userId);
+    if (!exp) return res.status(404).json({ error: "Experiment not found" });
+
+    const body = requestBody(req.body);
+    const fileContentB64 = optionalString(body.file_content_b64);
+    const fileName = optionalString(body.file_name);
+    if (!fileContentB64 || !fileName) {
+      return res.status(400).json({ error: "file_content_b64 and file_name are required" });
+    }
+
+    const buffer = decodeUpload(fileContentB64, fileName, {
+      allowedExt: ["docx"],
+      typeErrorMessage: "Unsupported file type. Upload your SOP as a Word (.docx) document.",
+    });
+
+    const { value: sopText } = await mammoth.extractRawText({ buffer });
+    if (!sopText.trim()) {
+      return res.status(422).json({ error: "Couldn't read any text from this document. Make sure it isn't empty or a scanned image." });
+    }
+
+    const assayGuidance = assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+    const systemInstruction = `You are an expert experimental designer reviewing a scientist's existing SOP for a cell and molecular biology lab. Reorganize it into the structured format below WITHOUT inventing details it doesn't contain — preserve the original concentrations, timings, and steps exactly. Only fill a field from your own knowledge if the source document truly omits it, and note that assumption in review_notes.
+
+${assayGuidance}
+
+Always end with "review_notes": a short, honestly critical list of gaps or ambiguities in THIS uploaded protocol (e.g. missing a blank well, unspecified replicate count) — you are reviewing it, not rewriting it from scratch.`;
+
+    const userPrompt = `Structure this uploaded SOP for "${exp.name}" (${exp.assay_type}):
+
+--- UPLOADED DOCUMENT TEXT ---
+${sopText.slice(0, 20000)}
+--- END DOCUMENT ---
+
+Respond in this exact JSON format:
+${PROTOCOL_JSON_FORMAT}`;
+
+    const protocol = await structureProtocolWithAI(systemInstruction, userPrompt);
+    if (!protocol) {
+      return res.status(502).json({ error: "The AI couldn't structure this document. Please try again." });
+    }
+
+    // Note: experiments.file_name is reserved for the plate-data upload (set by
+    // POST /:id/data) — deliberately not overwritten here to avoid the two
+    // uploads clobbering each other's filename.
+    await db
+      .update(experiments)
+      .set({ protocol_json: JSON.stringify(protocol), updated_at: new Date() })
+      .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
+
+    return res.json(protocol);
+  } catch (err) {
+    req.log.error({ err }, "Failed to parse uploaded SOP");
+    if (err instanceof UploadInputError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    return res.status(400).json({ error: "Could not read this document. Upload a valid .docx file." });
   }
 });
 

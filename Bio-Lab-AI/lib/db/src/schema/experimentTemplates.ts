@@ -12,7 +12,7 @@ export const experimentTemplates = pgTable("experiment_templates", {
   default_notes: text("default_notes"),
   expected_columns_json: text("expected_columns_json"),
   expected_control_rule: text("expected_control_rule"),
-  expected_status_default: text("expected_status_default").notNull().default("in_progress"),
+  expected_status_default: text("expected_status_default").notNull().default("designing"),
   ai_prompt_hint: text("ai_prompt_hint"),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

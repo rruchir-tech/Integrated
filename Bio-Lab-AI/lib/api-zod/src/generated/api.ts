@@ -30,7 +30,15 @@ export const ListExperimentsResponseItem = zod.object({
   date: zod.string(),
   assay_type: zod.string(),
   instrument: zod.string(),
-  status: zod.enum(["success", "failed", "unknown", "in_progress"]),
+  status: zod.enum([
+    "designing",
+    "ready",
+    "running",
+    "success",
+    "failed",
+    "unknown",
+    "in_progress",
+  ]),
   created_at: zod.coerce.date(),
 });
 export const ListExperimentsResponse = zod.array(ListExperimentsResponseItem);
@@ -39,7 +47,7 @@ export const ListExperimentsResponse = zod.array(ListExperimentsResponseItem);
  * @summary Create a new experiment
  */
 export const createExperimentBodyInstrumentDefault = `Generic`;
-export const createExperimentBodyStatusDefault = `unknown`;
+export const createExperimentBodyStatusDefault = `designing`;
 
 export const CreateExperimentBody = zod.object({
   name: zod.string(),
@@ -48,7 +56,15 @@ export const CreateExperimentBody = zod.object({
   instrument: zod.string().default(createExperimentBodyInstrumentDefault),
   notes: zod.string().optional(),
   status: zod
-    .enum(["success", "failed", "unknown", "in_progress"])
+    .enum([
+      "designing",
+      "ready",
+      "running",
+      "success",
+      "failed",
+      "unknown",
+      "in_progress",
+    ])
     .default(createExperimentBodyStatusDefault),
   file_name: zod.string().optional(),
   file_content_b64: zod
@@ -70,7 +86,15 @@ export const GetDashboardResponse = zod.object({
       date: zod.string(),
       assay_type: zod.string(),
       instrument: zod.string(),
-      status: zod.enum(["success", "failed", "unknown", "in_progress"]),
+      status: zod.enum([
+        "designing",
+        "ready",
+        "running",
+        "success",
+        "failed",
+        "unknown",
+        "in_progress",
+      ]),
       created_at: zod.coerce.date(),
     }),
   ),
@@ -102,7 +126,21 @@ export const GetExperimentResponse = zod.object({
   assay_type: zod.string(),
   instrument: zod.string(),
   notes: zod.string().nullish(),
-  status: zod.enum(["success", "failed", "unknown", "in_progress"]),
+  status: zod.enum([
+    "designing",
+    "ready",
+    "running",
+    "success",
+    "failed",
+    "unknown",
+    "in_progress",
+  ]),
+  protocol_json: zod
+    .string()
+    .nullish()
+    .describe(
+      "Structured protocol (objective, materials, controls, steps, review notes) as JSON",
+    ),
   file_name: zod.string().nullish(),
   raw_data_json: zod.string().nullish(),
   ai_summary: zod.string().nullish(),
@@ -125,7 +163,17 @@ export const UpdateExperimentBody = zod.object({
   assay_type: zod.string().optional(),
   instrument: zod.string().optional(),
   notes: zod.string().optional(),
-  status: zod.enum(["success", "failed", "unknown", "in_progress"]).optional(),
+  status: zod
+    .enum([
+      "designing",
+      "ready",
+      "running",
+      "success",
+      "failed",
+      "unknown",
+      "in_progress",
+    ])
+    .optional(),
 });
 
 export const UpdateExperimentResponse = zod.object({
@@ -135,7 +183,21 @@ export const UpdateExperimentResponse = zod.object({
   assay_type: zod.string(),
   instrument: zod.string(),
   notes: zod.string().nullish(),
-  status: zod.enum(["success", "failed", "unknown", "in_progress"]),
+  status: zod.enum([
+    "designing",
+    "ready",
+    "running",
+    "success",
+    "failed",
+    "unknown",
+    "in_progress",
+  ]),
+  protocol_json: zod
+    .string()
+    .nullish()
+    .describe(
+      "Structured protocol (objective, materials, controls, steps, review notes) as JSON",
+    ),
   file_name: zod.string().nullish(),
   raw_data_json: zod.string().nullish(),
   ai_summary: zod.string().nullish(),
@@ -149,6 +211,13 @@ export const UpdateExperimentResponse = zod.object({
  * @summary Delete experiment
  */
 export const DeleteExperimentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Generate a full structured data analysis report (SSE stream)
+ */
+export const GenerateDataAnalysisReportParams = zod.object({
   id: zod.coerce.number(),
 });
 
