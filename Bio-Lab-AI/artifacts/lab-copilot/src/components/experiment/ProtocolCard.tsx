@@ -91,6 +91,10 @@ export function ProtocolCard({
   };
 
   const generate = async () => {
+    // Capture BEFORE the request: only a refine (a protocol already existed) should
+    // show a "what changed" box at all — a first-time draft has nothing to diff
+    // against, so changes_summary is legitimately irrelevant there.
+    const wasRefine = !!protocol;
     setGenerating(true);
     setLastChanges(null);
     try {
@@ -104,8 +108,11 @@ export function ProtocolCard({
         throw new Error(err.error || "Generation failed");
       }
       const data = await resp.json().catch(() => null) as StructuredProtocol | null;
-      if (data?.changes_summary && data.changes_summary.length > 0) {
-        setLastChanges(data.changes_summary);
+      // Always show SOMETHING after a refine — never silently show nothing, since
+      // that's indistinguishable from the feature being broken. If the AI didn't
+      // report specific changes, say that explicitly instead.
+      if (wasRefine) {
+        setLastChanges(data?.changes_summary ?? []);
       }
       toast({ title: protocol ? "Protocol refined" : "Protocol generated", description: "Review the steps and AI suggestions below." });
       setRefineNote("");
@@ -265,19 +272,25 @@ export function ProtocolCard({
           </div>
         )}
 
-        {lastChanges && lastChanges.length > 0 && (
+        {lastChanges !== null && (
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
             <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2 flex items-center gap-1.5">
               <History className="h-3.5 w-3.5" /> What changed in this refinement
             </div>
-            <ul className="space-y-1 text-sm">
-              {lastChanges.map((c, i) => (
-                <li key={i} className="flex gap-2 text-emerald-700 dark:text-emerald-300/90">
-                  <span>•</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
+            {lastChanges.length > 0 ? (
+              <ul className="space-y-1 text-sm">
+                {lastChanges.map((c, i) => (
+                  <li key={i} className="flex gap-2 text-emerald-700 dark:text-emerald-300/90">
+                    <span>•</span>
+                    <span>{c}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-emerald-700 dark:text-emerald-300/90">
+                The AI didn't report specific changes this time — try a more specific refinement note (e.g. "use 3 replicates instead of 2").
+              </p>
+            )}
           </div>
         )}
 
