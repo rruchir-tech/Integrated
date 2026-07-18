@@ -72,11 +72,11 @@ export const ASSAY_GUIDES: AssayGuide[] = [
     matches: ["elisa", "immunoassay", "sandwich", "antibody", "antigen", "450", "tmb"],
     measures: "Concentration of a specific analyte (protein/cytokine/antibody) via an enzyme- or fluor-linked antibody signal.",
     quantification:
-      "Fit the standard curve (4PL/5PL for sigmoidal, linear only in the linear range), report R², then interpolate unknowns and back-calculate concentration × dilution factor. Report values in the standard's unit (e.g. pg/mL).",
-    keyFormula: "Concentration = interpolate(signal from standard curve) × dilution factor. 4PL as above; use only within the fitted standard range.",
+      "Fit the standard curve (4PL/5PL for sigmoidal, linear only in the linear range), report R², then interpolate unknowns and back-calculate concentration × dilution factor. Report values in the standard's unit (e.g. pg/mL). ELISA signal variance typically INCREASES with concentration — an unweighted least-squares fit is biased toward the high-concentration standards at the expense of accuracy near the sensitive low end; use 1/Y or 1/Y² weighting if the fitting method supports it, and say so if it doesn't. Back-calculate each standard from the fitted curve and flag the curve as questionable if any standard is off by more than ±20% of its nominal value — this is standard QC practice, not optional. State the LLOQ/ULOQ (lowest/highest reliably quantifiable standard) and flag any unknown that falls outside that range as non-quantifiable, not just 'out of range'.",
+    keyFormula: "Concentration = interpolate(signal from standard curve) × dilution factor. 4PL as above; use only within the fitted standard range (LLOQ–ULOQ).",
     controls: "Standard dilution series; blank/zero standard; non-specific binding (NSB); optional high/low QC samples.",
-    passCriteria: "Standard-curve R² > 0.98, QC recovery 80–120%, low NSB, unknowns falling within the standard range (not extrapolated).",
-    failureModes: "Signal above the top standard (needs further dilution); high background (insufficient washing); hook effect at very high analyte; edge effects; saturated absorbance (>~3.0 OD).",
+    passCriteria: "Standard-curve R² > 0.98, all standards back-calculate within ±20% of nominal, QC recovery 80–120%, low NSB, unknowns falling within LLOQ–ULOQ (not extrapolated).",
+    failureModes: "Signal above the top standard (needs further dilution); high background (insufficient washing); hook effect at very high analyte; edge effects; saturated absorbance (>~3.0 OD); unweighted fit distorting the low end of the curve.",
   },
   {
     key: "protein",
@@ -93,10 +93,10 @@ export const ASSAY_GUIDES: AssayGuide[] = [
     label: "Reporter / luciferase / fluorescent-reporter assay",
     matches: ["luciferase", "luc", "reporter", "gfp", "renilla", "dual-luc", "luminescence reporter", "promoter"],
     measures: "Transcriptional/pathway activity via reporter enzyme or fluorophore output.",
-    quantification: "Report fold-change vs the relevant control; for dual-luciferase, normalize firefly to Renilla (internal control) before computing fold-change. State the reference condition.",
+    quantification: "Report fold-change vs the relevant control; for dual-luciferase, normalize firefly to Renilla (internal control) before computing fold-change. State the reference condition. IMPORTANT CAVEAT: the normalizer is not always inert — some compounds directly affect luciferase enzyme activity itself (anaesthetics attenuate firefly signal, proteasome inhibitors stabilize firefly protein, some compounds increase Renilla output), which can look like a real treatment effect but is actually an assay artifact. If both firefly AND Renilla raw signals moved in the same direction, say so explicitly — the ratio alone can hide this.",
     controls: "Untreated/vehicle baseline; positive inducer; for dual-luc an internal normalization reporter.",
-    passCriteria: "Robust window over baseline (fold-change clearly > 1 with low CV), internal control stable across wells.",
-    failureModes: "Transfection-efficiency variation (why dual-luc normalization matters); signal decay over read time; well-to-well crosstalk for luminescence.",
+    passCriteria: "Robust window over baseline (fold-change clearly > 1 with low CV), internal control stable across wells, raw (unnormalized) signals for both reporters checked for consistency.",
+    failureModes: "Transfection-efficiency variation (why dual-luc normalization matters); signal decay over read time; well-to-well crosstalk for luminescence; the compound itself altering luciferase activity rather than the biology being tested (check raw signals, not just the ratio).",
   },
   {
     key: "qpcr",
@@ -139,10 +139,10 @@ export const ASSAY_GUIDES: AssayGuide[] = [
     matches: ["standard curve", "calibration curve", "calibration", "interpolat", "back-calculate", "back calculate", "calibrator", "unknown concentration"],
     measures: "The concentration of unknown samples, back-calculated from a curve of known-concentration standards.",
     quantification:
-      "Fit the standard series: linear within the linear range, otherwise 4PL/5PL (sigmoidal) or quadratic. Report R². Interpolate unknowns ONLY within the fitted range (never extrapolate past the top/bottom standard), then multiply by the dilution factor. Report in the standard's unit.",
-    keyFormula: "concentration = interpolate(signal, standard curve) × dilution factor. Quantify only within the fitted standard range.",
+      "Fit the standard series: linear within the linear range, otherwise 4PL/5PL (sigmoidal) or quadratic. Report R². Interpolate unknowns ONLY within the fitted range (never extrapolate past the top/bottom standard), then multiply by the dilution factor. Report in the standard's unit. Back-calculate each standard from its own fitted curve — flag the curve if any standard misses its nominal value by more than ±20%, a standard QC check most people skip. State the LLOQ/ULOQ and mark any unknown outside that range as non-quantifiable.",
+    keyFormula: "concentration = interpolate(signal, standard curve) × dilution factor. Quantify only within the fitted standard range (LLOQ–ULOQ).",
     controls: "A standard dilution series spanning the expected sample range; a zero/blank standard; optional high/low QC samples.",
-    passCriteria: "R² > 0.98 (immunoassay) or > 0.99 (protein), unknowns fall inside the standard range, QC recovery 80–120%.",
+    passCriteria: "R² > 0.98 (immunoassay) or > 0.99 (protein), all standards back-calculate within ±20% of nominal, unknowns fall inside LLOQ–ULOQ, QC recovery 80–120%.",
     failureModes: "Unknowns above the top standard (dilute and re-read); extrapolation beyond the curve; too few standards to define curvature; saturated signal flattening the top of the curve.",
   },
 ];
@@ -194,9 +194,14 @@ export const QUANTIFICATION_PROTOCOL = `DATA QUANTIFICATION PROTOCOL — follow 
    • Binding → Kd from saturation (Y=Bmax·X/(Kd+X)) or kon/koff (Kd=koff/kon).
    • Growth over time → exponential-phase rate µ=ln(OD₂/OD₁)/Δt and doubling time ln2/µ.
    • Relative expression → ΔΔCt, fold change = 2^(−ΔΔCt).
-3. COMPUTE ASSAY QC when controls exist: Z'-factor = 1 − 3(σp+σn)/|μp−μn| (≥0.5 excellent, 0–0.5 marginal, <0 fail); signal-to-background = μsig/μblank; signal-to-noise = (μp−μn)/√(σp²+σn²); %CV = 100·SD/mean per replicate group (<10–15% good).
-4. CHECK PLATE HEALTH: edge effects (peripheral vs inner wells), outliers (>2–3 SD), row/column gradients, saturated or floored signal. Recommend a heatmap/scatter when spread is high.
-5. REPORT hard numbers with units and specific well IDs; state assumptions (dose axis, which wells are controls); separate technical artifact from real biology; give a confidence level.
+3. COMPUTE ASSAY QC when controls exist: Z'-factor = 1 − 3(σp+σn)/|μp−μn| (≥0.5 excellent, 0–0.5 marginal, <0 fail); signal-to-background = μsig/μblank; signal-to-noise = (μp−μn)/√(σp²+σn²); %CV = 100·SD/mean per replicate group (<10–15% good). BE HONEST ABOUT Z'-FACTOR'S LIMITS: it assumes roughly normal, low-outlier control distributions and its conventional thresholds (0.5, 0) are convention, not a proven statistical cutoff — don't present a marginal or failing Z' as a hard verdict on its own, especially for phenotypic/primary-cell/high-content assays where a few outlier wells can deflate it artificially.
+4. CHECK REPLICATE INTEGRITY: if the "replicates" look like the same dilution/sample pipetted into adjacent wells (not independently prepared), flag this as PSEUDOREPLICATION — their tight agreement reflects pipetting consistency, not true biological/technical independence, and any CV%/CI computed from them understates real uncertainty. Say so explicitly rather than reporting a falsely confident CV.
+5. CHECK PLATE HEALTH with this diagnostic logic, not just a generic "check for edge effects":
+   • High background/signal EVERYWHERE (not spatially patterned) → suspect reagent quality, blocking, or wash-step consistency, not the plate layout.
+   • High/low signal concentrated at the PERIPHERAL wells only → classic edge effect (evaporation, temperature gradient during incubation) — recommend excluding border wells or using only the inner 60 wells next time.
+   • Signal drifting directionally over the READ SEQUENCE/TIME → reagent instability or read-order timing artifact, not a real biological trend.
+   Also check outliers (>2–3 SD) and saturated/floored signal. Recommend a heatmap/scatter when spread is high.
+6. REPORT hard numbers with units and specific well IDs; state assumptions (dose axis, which wells are controls); separate technical artifact from real biology; give a confidence level.
 Never invent a standard curve, dose axis, or control set that isn't in the data — if it's missing, say what's needed.`;
 
 /**

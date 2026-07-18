@@ -300,7 +300,14 @@ router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res
         : `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}${PROTOCOL_INTERVIEW_INSTRUCTION}`;
     }
     systemInstruction += CHAT_TONE_INSTRUCTION;
-    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}\n\nSCIENTIST QUESTION: ${content}`;
+    // The full Data Analysis report (if one has been generated) is specific to
+    // THIS experiment, so it's appended only here — not in buildLabHistory's
+    // one-line-per-experiment summaries, which would bloat every related
+    // experiment mention with a full report each time.
+    const dataReportContext = exp?.data_analysis_report
+      ? `\n\nDETAILED DATA ANALYSIS REPORT for this experiment (already generated — reference it directly rather than re-deriving from raw data when answering):\n${exp.data_analysis_report.slice(0, 6000)}`
+      : "";
+    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}${dataReportContext}\n\nSCIENTIST QUESTION: ${content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");

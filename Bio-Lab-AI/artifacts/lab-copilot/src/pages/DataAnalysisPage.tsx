@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useQueryClient } from "@tanstack/react-query";
 import { useListExperiments, useGetExperiment, getListExperimentsQueryKey, getGetExperimentQueryKey } from "@workspace/api-client-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -7,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
@@ -29,9 +31,18 @@ import {
   Loader2,
   FileBarChart,
   GitCompare,
+  Sparkles,
+  FileDown,
+  MessageSquare,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
+import { PlateHeatmap } from "@/components/PlateHeatmap";
+import { DoseResponseCard } from "@/components/DoseResponseCard";
+import { CopilotChat } from "@/components/chat/CopilotChat";
+import { AttachDataCard } from "@/components/experiment/AttachDataCard";
+import { computeControlMetrics, type WellRole } from "@/lib/plateMetrics";
+import { printExperimentReport } from "@/lib/printExperimentReport";
 
 // The parser emits one of two shapes into experiments.raw_data_json:
 //  1. A 96-well plate ("_type":"plate96") with { stats, wells, metadata }
@@ -44,6 +55,7 @@ interface PlateWell {
   col: number;
   value: number | null;
   status: "ok" | "blank" | "high" | "low";
+  cv_pct: number | null;
 }
 
 interface Plate96Summary {
@@ -59,6 +71,9 @@ interface Plate96Summary {
     well_count: number;
   };
   wells?: PlateWell[];
+  // Present in the backend's plate96 payload — declared here so it survives
+  // through to printExperimentReport's PDF heatmap render.
+  read_matrix?: (number | null)[][];
 }
 
 interface CsvSummary {
@@ -357,12 +372,19 @@ function QuantitativeSummaryPanel({ id }: { id: number }) {
 }
 
 export function DataAnalysisPage() {
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [report, setReport] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // What the AI should focus on / be aware of — steers the report instead of a
+  // fixed prompt guessing. Optional but prominent; refineNote is a follow-up
+  // note once a report already exists (mirrors the Protocol refine pattern).
+  const [focusNote, setFocusNote] = useState("");
+  const [refineNote, setRefineNote] = useState("");
 
   // Compare mode — lives here instead of a separate nav page. Pick a second
   // experiment and stream an AI comparison against the selected one.
@@ -382,6 +404,39 @@ export function DataAnalysisPage() {
 
   const parsedSelectedSummary = parseSummary(selectedExp?.raw_data_json);
   const hasPlateSummary = hasGraphableData(parsedSelectedSummary);
+  const isPlate96 = parsedSelectedSummary?.kind === "plate96";
+
+  // Read-only: the same control-well markings the scientist made on the
+  // experiment page (localStorage key `layout:${id}`), so the heatmap/dose-
+  // response here stay visually consistent without a second editor to maintain.
+  const [wellRoles, setWellRoles] = useState<Record<string, WellRole>>({});
+  useEffect(() => {
+    if (!selectedId) { setWellRoles({}); return; }
+    try {
+      const raw = localStorage.getItem(`layout:${selectedId}`);
+      setWellRoles(raw ? JSON.parse(raw) || {} : {});
+    } catch {
+      setWellRoles({});
+    }
+  }, [selectedId]);
+  const controlMetrics = isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells)
+    ? computeControlMetrics(parsedSelectedSummary.wells, wellRoles)
+    : null;
+
+  // A previously-generated report is persisted server-side — show it immediately
+  // on selecting an experiment rather than requiring the user to regenerate.
+  // Guarded by ID so it seeds once per experiment and never clobbers an
+  // in-progress stream for the SAME experiment.
+  const seededForId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!selectedId || !selectedExp) return;
+    if (seededForId.current === selectedId) return;
+    seededForId.current = selectedId;
+    if (selectedExp.data_analysis_report) {
+      setReport(selectedExp.data_analysis_report);
+      setHasReport(true);
+    }
+  }, [selectedId, selectedExp]);
 
   const generateReport = async () => {
     if (!selectedId) return;
@@ -398,7 +453,10 @@ export function DataAnalysisPage() {
       const response = await apiFetch(`/api/experiments/${selectedId}/data-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          ...(focusNote.trim() ? { focus_note: focusNote.trim() } : {}),
+          ...(hasReport && refineNote.trim() ? { refine_note: refineNote.trim() } : {}),
+        }),
         signal: controller.signal,
       });
 
@@ -430,6 +488,11 @@ export function DataAnalysisPage() {
           }
         }
       }
+      // The report is persisted server-side on success — refetch so the
+      // experiment record (and anything else reading it, e.g. chat grounding)
+      // reflects the new report immediately.
+      queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(selectedId) });
+      setRefineNote("");
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== "AbortError") {
         setStreamError("The AI analysis could not be generated. Please check your API configuration or try again.");
@@ -446,6 +509,8 @@ export function DataAnalysisPage() {
     setHasReport(false);
     setStreamError(null);
     setIsStreaming(false);
+    setFocusNote("");
+    setRefineNote("");
     if (compareAbortRef.current) compareAbortRef.current.abort();
     setCompareId(null);
     setCompareReport("");
@@ -573,7 +638,49 @@ export function DataAnalysisPage() {
               </h2>
             </div>
 
-            <QuantitativeSummaryPanel id={selectedId} />
+            {selectedExp && !selectedExp.raw_data_json ? (
+              <AttachDataCard
+                experimentId={selectedId}
+                onAttached={() => queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(selectedId) })}
+              />
+            ) : (
+              <>
+                <QuantitativeSummaryPanel id={selectedId} />
+
+                {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
+                  <Card className="border-primary/20 dark:bg-card/80">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <FlaskConical className="h-4 w-4 text-primary" />
+                        96-Well Plate Heatmap
+                      </CardTitle>
+                      {Object.keys(wellRoles).length === 0 && (
+                        <CardDescription>
+                          Mark control wells on the experiment page to see them color-coded here and unlock the dose-response fit below.
+                        </CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      <PlateHeatmap
+                        wells={parsedSelectedSummary.wells}
+                        stats={parsedSelectedSummary.stats ?? { mean: null, sd: null, cv_pct: null, min: null, max: null, blank_count: 0, well_count: 0 }}
+                        wavelength={parsedSelectedSummary.metadata?.wavelength}
+                        roles={wellRoles}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null && (
+                  <DoseResponseCard
+                    expId={selectedId}
+                    wells={parsedSelectedSummary.wells}
+                    meanPos={controlMetrics.meanPos}
+                    meanNeg={controlMetrics.meanNeg}
+                  />
+                )}
+              </>
+            )}
 
             <div className="pt-2">
               <Card className="border-primary/20 dark:bg-card/80">
@@ -590,10 +697,26 @@ export function DataAnalysisPage() {
                     </div>
                     <div className="flex gap-2">
                       {hasReport && !isStreaming && (
-                        <Button variant="outline" size="sm" onClick={reset} className="gap-1.5">
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Reset
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => selectedExp && printExperimentReport({
+                              experiment: selectedExp,
+                              rawData: parsedSelectedSummary?.kind === "plate96" ? parsedSelectedSummary : null,
+                              suggestions: [],
+                              detailedReport: report,
+                            })}
+                          >
+                            <FileDown className="h-3.5 w-3.5" />
+                            Export PDF
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={reset} className="gap-1.5">
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Reset
+                          </Button>
+                        </>
                       )}
                       <Button
                         size="sm"
@@ -621,9 +744,42 @@ export function DataAnalysisPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="pt-4">
+                <CardContent className="pt-4 space-y-4">
+                  {!isStreaming && (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          What should the AI focus on or be aware of? (optional)
+                        </label>
+                        <Textarea
+                          value={focusNote}
+                          onChange={(e) => setFocusNote(e.target.value)}
+                          placeholder="e.g. 'I'm worried column 12 looks off' or 'just tell me the IC50, skip the full report'"
+                          rows={2}
+                          className="text-sm bg-background"
+                        />
+                      </div>
+                      {hasReport && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                            <RotateCcw className="h-3.5 w-3.5 text-primary" />
+                            Anything specific to change in this refinement? (optional)
+                          </label>
+                          <Textarea
+                            value={refineNote}
+                            onChange={(e) => setRefineNote(e.target.value)}
+                            placeholder="e.g. 'go deeper on why the Z-factor dropped' or 're-check for pseudoreplication'"
+                            rows={2}
+                            className="text-sm bg-background"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {streamError && (
-                    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
+                    <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
                       <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
                       <p className="text-sm text-destructive">{streamError}</p>
                     </div>
@@ -634,7 +790,7 @@ export function DataAnalysisPage() {
                       <BrainCircuit className="h-10 w-10 mb-3 opacity-30" />
                       <p className="text-sm">
                       {!hasPlateSummary
-                          ? "No graphable experiment data is available yet. Please upload a Synergy H1 / Gen5 CSV so the AI can make graphs and analyze the experiment."
+                          ? "No graphable experiment data is available yet. Upload a Synergy H1 / Gen5 export above so the AI can make graphs and analyze the experiment."
                           : "Click \"Bioalyze this plate\" to produce graphs and a structured report from your plate data."}
                       </p>
                     </div>
@@ -651,6 +807,19 @@ export function DataAnalysisPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Chat — same per-experiment conversation as the experiment page, so
+                design/run discussion and follow-up questions about this report
+                live in one continuous thread. */}
+            {selectedExp?.conversation_id && (
+              <div className="pt-2">
+                <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                  Ask about this data
+                </h3>
+                <CopilotChat conversationId={selectedExp.conversation_id} />
+              </div>
+            )}
 
             {/* Compare — pick a second experiment and stream an AI comparison. */}
             <div className="pt-2">

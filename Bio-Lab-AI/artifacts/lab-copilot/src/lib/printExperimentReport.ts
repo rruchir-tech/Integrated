@@ -171,8 +171,11 @@ export function printExperimentReport(args: {
   experiment: ReportExperiment;
   rawData: PlateData | null;
   suggestions: Suggestion[];
+  /** The full markdown Data Analysis report (from POST /:id/data-analysis), distinct
+   *  from the shorter experiment.ai_summary — included as its own section when present. */
+  detailedReport?: string;
 }): void {
-  const { experiment, rawData, suggestions } = args;
+  const { experiment, rawData, suggestions, detailedReport } = args;
   const isPlate = rawData?._type === "plate96" && Array.isArray(rawData?.read_matrix);
   const stats = rawData?.stats;
   const meta = rawData?.metadata;
@@ -296,7 +299,11 @@ export function printExperimentReport(args: {
   }
 
   ${
-    experiment.ai_summary
+    detailedReport
+      ? `<section class="block"><h2>Detailed Data Analysis Report</h2><div class="prose">${mdLite(
+          detailedReport,
+        )}</div></section>`
+      : experiment.ai_summary
       ? `<section class="block"><h2>AI summary</h2><div class="prose">${mdLite(
           experiment.ai_summary,
         )}</div></section>`

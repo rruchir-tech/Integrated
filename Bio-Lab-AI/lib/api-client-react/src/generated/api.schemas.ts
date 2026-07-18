@@ -63,6 +63,8 @@ export interface Experiment {
   raw_data_json?: string | null;
   ai_summary?: string | null;
   ai_next_experiments_json?: string | null;
+  /** Persisted long-form Data Analysis report (markdown) from POST /:id/data-analysis */
+  data_analysis_report?: string | null;
   conversation_id?: number | null;
   created_at: string;
   updated_at: string;

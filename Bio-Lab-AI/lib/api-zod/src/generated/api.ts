@@ -145,6 +145,12 @@ export const GetExperimentResponse = zod.object({
   raw_data_json: zod.string().nullish(),
   ai_summary: zod.string().nullish(),
   ai_next_experiments_json: zod.string().nullish(),
+  data_analysis_report: zod
+    .string()
+    .nullish()
+    .describe(
+      "Persisted long-form Data Analysis report (markdown) from POST \/:id\/data-analysis",
+    ),
   conversation_id: zod.number().nullish(),
   created_at: zod.coerce.date(),
   updated_at: zod.coerce.date(),
@@ -202,6 +208,12 @@ export const UpdateExperimentResponse = zod.object({
   raw_data_json: zod.string().nullish(),
   ai_summary: zod.string().nullish(),
   ai_next_experiments_json: zod.string().nullish(),
+  data_analysis_report: zod
+    .string()
+    .nullish()
+    .describe(
+      "Persisted long-form Data Analysis report (markdown) from POST \/:id\/data-analysis",
+    ),
   conversation_id: zod.number().nullish(),
   created_at: zod.coerce.date(),
   updated_at: zod.coerce.date(),

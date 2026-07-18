@@ -8,7 +8,7 @@ import {
   AnalyzeExperimentBody,
 } from "@workspace/api-zod";
 import { generateContentWithRetry, generateContentStreamWithRetry } from "../lib/aiRetry";
-import { analysisKnowledgeBlock, assayGuidanceBlock, QUANTIFICATION_PROTOCOL } from "../lib/assayKnowledge";
+import { analysisKnowledgeBlock, assayGuidanceBlock } from "../lib/assayKnowledge";
 import { PROTOCOL_JSON_FORMAT, parseStructuredProtocol, type StructuredProtocol } from "../lib/protocol";
 import { getRequestUserId } from "../lib/requestUser";
 import { aiRateLimiter } from "../middlewares/rateLimit";
@@ -581,6 +581,20 @@ router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) =>
     if (!rows[0]) return res.status(404).json({ error: "Experiment not found" });
     const exp = rows[0];
 
+    const body = requestBody(req.body);
+    let focusNote = "";
+    let refineNote = "";
+    try {
+      focusNote = optionalString(body.focus_note) ? assertMaxChars(String(body.focus_note), "Focus note") : "";
+      refineNote = optionalString(body.refine_note) ? assertMaxChars(String(body.refine_note), "Refinement note") : "";
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
+    // Mirrors the protocol design pattern: a prior report already existing means
+    // this call is a refinement of it, not a fresh first-time analysis.
+    const isRefine = !!exp.data_analysis_report;
+
     const related = await db
       .select()
       .from(experiments)
@@ -601,12 +615,14 @@ router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) =>
       ? related.map((r) => `- ${r.name} (${r.date}, ${r.assay_type}, ${r.instrument}, status: ${r.status}${r.ai_summary ? `, summary: ${r.ai_summary.substring(0, 200)}` : ""})`).join("\n")
       : "None";
 
+    const assayGuidance = analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+
     const systemPrompt = `You are an expert cell biology and lab data analysis copilot. You specialize in interpreting Synergy H1 / Gen5 microplate reader experiments. You receive:
 1) a structured quantitative summary of the current experiment (control stats, dose-response stats, outliers),
 2) metadata (assay type, instrument, notes),
 3) optionally summaries of previous related experiments.
 
-${QUANTIFICATION_PROTOCOL}
+${assayGuidance}
 
 Your job is to:
 - summarize what happened in this experiment,
@@ -620,7 +636,7 @@ Always:
 - cite numeric data explicitly (e.g., "control mean 0.985, CV 5.1%", "1.0 µM caused ~72% drop vs control"),
 - distinguish between strong evidence and speculation,
 - and keep recommendations practical for a small biotech lab.
-
+${focusNote ? `\nThe scientist specifically wants you to focus on or be aware of: ${focusNote}. Address this directly in the report, not just the generic sections.\n` : ""}
 Respond in structured markdown with these exact sections:
 ## 1. Summary of Experiment
 ## 2. Data Quality & Controls
@@ -628,9 +644,31 @@ Respond in structured markdown with these exact sections:
 ## 4. Likely Causes for Observed Outcomes
 ## 5. Comparison to Previous Experiments
 ## 6. Recommended Next 3 Experiments
-## 7. Confidence and Limitations`;
+## 7. Confidence and Limitations${isRefine ? "\n## 8. What Changed From the Previous Report" : ""}`;
 
-    const userPrompt = `Please analyze this experiment's data and produce a structured report.
+    const userPrompt = isRefine
+      ? `Refine the existing report below based on the scientist's note. Keep any sections that still hold; update what the note asks for, and re-check everything against the current data.
+
+**PREVIOUS REPORT:**
+${(exp.data_analysis_report ?? "").slice(0, 6000)}
+
+**SCIENTIST'S REFINEMENT NOTE:** ${refineNote || "(none — just re-review and tighten the previous report against the data)"}
+
+**Experiment Metadata:**
+- Name: ${exp.name}
+- Date: ${exp.date}
+- Assay Type: ${exp.assay_type}
+- Instrument: ${exp.instrument}
+- Status: ${exp.status}
+- Notes: ${exp.notes ?? "None"}
+
+**Quantitative Summary (plate_summary_json):**
+\`\`\`json
+${plateSummaryText}
+\`\`\`
+
+Produce the FULL updated report (not just a diff), ending with section 8 summarizing what actually changed vs. the previous report — if nothing substantive changed, say so.`
+      : `Please analyze this experiment's data and produce a structured report.
 
 **Experiment Metadata:**
 - Name: ${exp.name}
@@ -670,6 +708,12 @@ ${relatedContext}`;
     }
 
     if (streamed.trim()) {
+      // Persist so the report survives a refresh, can be refined next time, and
+      // can ground follow-up chat questions.
+      await db
+        .update(experiments)
+        .set({ data_analysis_report: streamed, updated_at: new Date() })
+        .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     } else {
       res.write(`data: ${JSON.stringify({ error: "The AI returned an empty report (it may be rate-limited). Please try again." })}\n\n`);

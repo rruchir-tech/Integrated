@@ -422,6 +422,10 @@ components:
         ai_next_experiments_json:
           type: string
           nullable: true
+        data_analysis_report:
+          type: string
+          nullable: true
+          description: Persisted long-form Data Analysis report (markdown) from POST /:id/data-analysis
         conversation_id:
           type: integer
           nullable: true

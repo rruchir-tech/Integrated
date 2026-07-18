@@ -23,6 +23,10 @@ export const experiments = pgTable("experiments", {
   raw_data_json: text("raw_data_json"),
   ai_summary: text("ai_summary"),
   ai_next_experiments_json: text("ai_next_experiments_json"),
+  // The persisted long-form Data Analysis report (markdown) from
+  // POST /:id/data-analysis, so it survives a refresh, can be refined, and can
+  // ground follow-up chat — distinct from ai_summary (the shorter /analyze output).
+  data_analysis_report: text("data_analysis_report"),
   conversation_id: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
   // Optional grouping into a Project (nullable = ungrouped). ON DELETE SET NULL so
   // deleting a project never deletes its experiments.
