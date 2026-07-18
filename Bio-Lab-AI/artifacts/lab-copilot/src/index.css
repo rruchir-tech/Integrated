@@ -95,14 +95,14 @@
   --accent-foreground: 0 0% 100%;
   --ring: 185 85% 35%;
   --input: 210 20% 90%;
-  --sidebar: 220 30% 12%;             /* keep sidebar dark even in light mode */
-  --sidebar-foreground: 210 60% 92%;
-  --sidebar-border: 220 28% 18%;
-  --sidebar-primary: 188 60% 44%;
-  --sidebar-primary-foreground: 220 30% 5%;
-  --sidebar-accent: 220 28% 18%;
-  --sidebar-accent-foreground: 188 52% 54%;
-  --sidebar-ring: 188 60% 44%;
+  --sidebar: 198 38% 97%;             /* light lab-glass surface */
+  --sidebar-foreground: 216 34% 14%;
+  --sidebar-border: 202 24% 84%;
+  --sidebar-primary: 186 72% 33%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 190 42% 91%;
+  --sidebar-accent-foreground: 187 72% 25%;
+  --sidebar-ring: 186 72% 33%;
   --chart-1: 185 85% 35%;
   --chart-2: 142 60% 35%;
   --chart-3: 270 70% 55%;
