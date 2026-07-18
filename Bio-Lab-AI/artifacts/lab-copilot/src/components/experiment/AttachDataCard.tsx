@@ -9,7 +9,8 @@ import { UploadCloud, Loader2, FlaskConical } from "lucide-react";
  * Upload plate data to an experiment that was created design-first (from a goal /
  * protocol, before any data existed). Posts to POST /api/experiments/:id/data,
  * which re-parses the file and clears stale AI analysis. On success the parent
- * refetches; the detail page's auto-analyze then quantifies the new data.
+ * refetches; quantifying the data is a separate, explicit "Bioalyze" action —
+ * nothing here runs analysis automatically.
  */
 export function AttachDataCard({
   experimentId,

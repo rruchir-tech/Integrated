@@ -718,6 +718,7 @@ export function DataAnalysisPage() {
               </>
             )}
 
+            {selectedExp?.raw_data_json && (
             <div className="pt-2">
               <Card className="border-primary/20 dark:bg-card/80">
                 <CardHeader className="pb-3 border-b border-border">
@@ -837,6 +838,7 @@ export function DataAnalysisPage() {
                 </CardContent>
               </Card>
             </div>
+            )}
 
             {/* Chat — same per-experiment conversation as the experiment page, so
                 design/run discussion and follow-up questions about this report
