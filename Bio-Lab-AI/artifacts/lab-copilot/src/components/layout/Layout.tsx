@@ -98,7 +98,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(64,214,225,.11),transparent_32%),linear-gradient(180deg,rgba(255,255,255,.025),transparent_24%,rgba(0,0,0,.16))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(18,170,178,.13),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.7),transparent_28%,rgba(69,126,140,.06))] dark:bg-[radial-gradient(circle_at_10%_0%,rgba(64,214,225,.11),transparent_32%),linear-gradient(180deg,rgba(255,255,255,.025),transparent_24%,rgba(0,0,0,.16))]" />
       <div className="pointer-events-none absolute inset-0 app-noise-fine opacity-30" />
 
       <div className="relative z-10 flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border/80 px-4">
@@ -118,7 +118,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </motion.span>
           <div>
             <span className="block text-[15px] font-semibold tracking-wide">Bioalyzer</span>
-            <span className="block font-mono text-[9px] uppercase tracking-[0.18em] text-sidebar-foreground/35">Lab intelligence</span>
+            <span className="block font-mono text-[9px] uppercase tracking-[0.18em] text-sidebar-foreground/55 dark:text-sidebar-foreground/35">Lab intelligence</span>
           </div>
         </Link>
         <span className="signal-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
@@ -138,11 +138,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{isLoaded ? displayName : greeting}</div>
-                  <div className="truncate text-[11px] text-sidebar-foreground/42">{email}</div>
+                  <div className="truncate text-[11px] text-sidebar-foreground/60 dark:text-sidebar-foreground/42">{email}</div>
                 </div>
-                <ChevronRight className="h-3.5 w-3.5 text-sidebar-foreground/25" />
+                <ChevronRight className="h-3.5 w-3.5 text-sidebar-foreground/45 dark:text-sidebar-foreground/25" />
               </div>
-              <div className="mt-3 flex items-center justify-between text-[10px] text-sidebar-foreground/38">
+              <div className="mt-3 flex items-center justify-between text-[10px] text-sidebar-foreground/55 dark:text-sidebar-foreground/38">
                 <span>{Array.isArray(experiments) && experiments.length ? `${experiments.length} experiments` : "Workspace ready"}</span>
                 <span className="font-mono">{Math.min(100, (Array.isArray(experiments) ? experiments.length : 0) * 10)}%</span>
               </div>
@@ -175,7 +175,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <nav className="relative z-10 flex min-h-0 flex-1 flex-col gap-5 overflow-hidden py-3" aria-label="Workspace navigation">
         <div className="flex flex-col gap-1 px-3">
-          <span className="mb-1 px-3 font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/28">Workspace</span>
+          <span className="mb-1 px-3 font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/50 dark:text-sidebar-foreground/28">Workspace</span>
           {navItems.filter((item) => item.show).map((item) => {
             const Icon = item.icon;
             return (
@@ -186,7 +186,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   data-feedback="navigate"
                   data-feedback-message={`Moving to ${item.label.toLowerCase()}`}
                   className={`group relative flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors ${
-                    item.active ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/62 hover:text-sidebar-foreground"
+                    item.active ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:text-sidebar-foreground dark:text-sidebar-foreground/62"
                   }`}
                 >
                   {item.active && (
@@ -196,13 +196,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       transition={{ type: "spring", stiffness: 350, damping: 32 }}
                     />
                   )}
-                  <Icon className={`relative z-10 h-4 w-4 ${item.active ? "text-sidebar-primary" : "text-sidebar-foreground/42 group-hover:text-sidebar-primary"}`} />
+                  <Icon className={`relative z-10 h-4 w-4 ${item.active ? "text-sidebar-primary" : "text-sidebar-foreground/58 group-hover:text-sidebar-primary dark:text-sidebar-foreground/42"}`} />
                   <span className="relative z-10 flex-1">{item.label}</span>
                   {item.count !== undefined && item.count !== null && (
-                    <span className="relative z-10 rounded-full border border-sidebar-border bg-sidebar/55 px-1.5 py-0.5 font-mono text-[9px] text-sidebar-foreground/45">{item.count}</span>
+                    <span className="relative z-10 rounded-full border border-sidebar-border bg-sidebar/55 px-1.5 py-0.5 font-mono text-[9px] text-sidebar-foreground/60 dark:text-sidebar-foreground/45">{item.count}</span>
                   )}
                   {item.shortcut && (
-                    <kbd className="relative z-10 hidden rounded border border-sidebar-border px-1 py-0.5 font-mono text-[8px] text-sidebar-foreground/25 group-hover:block">{item.shortcut}</kbd>
+                    <kbd className="relative z-10 hidden rounded border border-sidebar-border px-1 py-0.5 font-mono text-[8px] text-sidebar-foreground/50 group-hover:block dark:text-sidebar-foreground/25">{item.shortcut}</kbd>
                   )}
                 </Link>
               </motion.div>
@@ -212,11 +212,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="flex min-h-0 flex-1 flex-col px-3">
           <div className="mb-2 flex items-center justify-between px-3">
-            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/28">Recent runs</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/50 dark:text-sidebar-foreground/28">Recent runs</span>
             <Link
               href="/experiments/new"
               onClick={() => mobile && setMobileNavOpen(false)}
-              className="rounded-md p-1 text-sidebar-foreground/35 transition hover:bg-sidebar-accent hover:text-sidebar-primary"
+              className="rounded-md p-1 text-sidebar-foreground/55 transition hover:bg-sidebar-accent hover:text-sidebar-primary dark:text-sidebar-foreground/35"
               title="New Experiment"
               data-feedback="create"
               data-feedback-message="Opening a fresh experiment record"
@@ -234,7 +234,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     data-feedback="navigate"
                     data-feedback-message={`Opening ${experiment.name}`}
                     className={`group flex items-center justify-between rounded-lg px-3 py-2 text-xs transition ${
-                      location === `/experiments/${experiment.id}` ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/46 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground"
+                      location === `/experiments/${experiment.id}` ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/62 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground dark:text-sidebar-foreground/46"
                     }`}
                   >
                     <span className="mr-2 truncate">{experiment.name}</span>
@@ -244,8 +244,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               ))}
               {(!Array.isArray(experiments) || experiments.length === 0) && (
                 <div className="rounded-xl border border-dashed border-sidebar-border px-3 py-5 text-center">
-                  <Activity className="mx-auto h-4 w-4 text-sidebar-foreground/25" />
-                  <p className="mt-2 text-[10px] leading-4 text-sidebar-foreground/35">Your recent runs will appear here.</p>
+                  <Activity className="mx-auto h-4 w-4 text-sidebar-foreground/45 dark:text-sidebar-foreground/25" />
+                  <p className="mt-2 text-[10px] leading-4 text-sidebar-foreground/55 dark:text-sidebar-foreground/35">Your recent runs will appear here.</p>
                 </div>
               )}
             </div>
@@ -254,7 +254,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="relative z-10 mt-auto flex shrink-0 items-center justify-between border-t border-sidebar-border/80 px-4 py-3.5">
-        <div className="flex items-center gap-2 text-[10px] text-sidebar-foreground/35">
+        <div className="flex items-center gap-2 text-[10px] text-sidebar-foreground/55 dark:text-sidebar-foreground/35">
           <span className="signal-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
           Workspace online
         </div>
@@ -280,7 +280,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="relative flex h-[100dvh] w-full overflow-hidden bg-background app-noise">
       <AmbientBackdrop />
 
-      <aside className="relative z-30 hidden h-full w-[272px] shrink-0 border-r border-sidebar-border/80 shadow-[18px_0_70px_rgba(0,0,0,.16)] lg:block">
+      <aside className="relative z-30 hidden h-full w-[272px] shrink-0 border-r border-sidebar-border/80 shadow-[16px_0_50px_rgba(28,91,105,.10)] dark:shadow-[18px_0_70px_rgba(0,0,0,.16)] lg:block">
         <SidebarContent />
       </aside>
 
