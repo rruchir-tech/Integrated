@@ -93,24 +93,11 @@ export function ExperimentDetail() {
     }
   });
 
-  // Auto-analyze once: when an experiment that has uploaded data is opened but
-  // hasn't been analyzed yet, kick off the AI analysis automatically so the
-  // user lands on a ready interpretation instead of an empty panel.
-  const autoAnalyzedRef = useRef(false);
+  // Analysis only runs when the scientist explicitly clicks "Bioalyze" below —
+  // it used to auto-fire the moment data was uploaded, with zero input, which
+  // is exactly the "guessing without asking" behavior this app now avoids
+  // everywhere else (see the Data Analysis page's focus pop-up).
   const heatmapRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (
-      experiment &&
-      !autoAnalyzedRef.current &&
-      experiment.raw_data_json &&
-      !experiment.ai_summary &&
-      !analyzeMutation.isPending
-    ) {
-      autoAnalyzedRef.current = true;
-      analyzeMutation.mutate({ id: expId, data: {} });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [experiment, expId]);
 
   // Load this experiment's saved pass/fail threshold.
   useEffect(() => {
