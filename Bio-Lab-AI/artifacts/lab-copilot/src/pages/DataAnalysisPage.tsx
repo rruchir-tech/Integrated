@@ -45,6 +45,7 @@ import { CopilotChat } from "@/components/chat/CopilotChat";
 import { AttachDataCard } from "@/components/experiment/AttachDataCard";
 import { computeControlMetrics, type WellRole } from "@/lib/plateMetrics";
 import { printExperimentReport } from "@/lib/printExperimentReport";
+import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader } from "@/components/lab/LivingLab";
 
 // The parser emits one of two shapes into experiments.raw_data_json:
 //  1. A 96-well plate ("_type":"plate96") with { stats, wells, metadata }
@@ -590,22 +591,43 @@ export function DataAnalysisPage() {
   };
 
   return (
-    <div className="space-y-6 pb-12 max-w-5xl mx-auto">
-      <div className="flex items-center gap-3 border-b pb-5">
-        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-          <BarChart3 className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Data Analysis</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Select a Synergy H1 / Gen5 experiment to see quantified metrics and generate an AI-written analysis report.
-          </p>
-        </div>
-      </div>
+    <div className="lab-page space-y-7 pb-12" data-accent="cyan">
+      <LabPageHeader
+        eyebrow="Quantitative signal studio"
+        title="Make the evidence speak."
+        description="Move from instrument output to visible patterns, defensible statistics, and an AI report you can question—without separating the numbers from their experimental context."
+        icon={BarChart3}
+        accent="cyan"
+        status={selectedExp ? `${selectedExp.assay_type} loaded` : `${allExperiments?.length ?? 0} records available`}
+        aside={
+          <div className="flex h-40 w-60 items-end justify-center gap-2 rounded-[2rem] border border-primary/20 bg-background/30 p-7" aria-hidden="true">
+            {[38, 72, 48, 104, 82, 124, 64, 94].map((height, index) => (
+              <motion.span
+                key={height + index}
+                className="w-3 rounded-full bg-primary/75 shadow-[0_0_18px_hsl(var(--primary)/0.25)]"
+                initial={{ height: 8 }}
+                animate={{ height: [height * 0.72, height, height * 0.82] }}
+                transition={{ duration: 2.4 + index * 0.13, repeat: Infinity, ease: "easeInOut" }}
+              />
+            ))}
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <LabConversation accent="cyan">
+        {selectedExp
+          ? hasPlateSummary
+            ? `I found graphable evidence in ${selectedExp.name}. The quantitative layer is live; tell me what matters before I form an interpretation.`
+            : `${selectedExp.name} is selected, but it still needs readable evidence. Attach the instrument output and I’ll build the analysis surface immediately.`
+          : "Choose one experiment and I’ll assemble its quality metrics, plate pattern, report, discussion, and comparison tools into a single evidence trail."}
+      </LabConversation>
+
+      <LabPanel accent="cyan" className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)] md:p-6">
         <div className="space-y-3">
-          <label className="text-sm font-medium text-muted-foreground">Select Experiment</label>
+          <div>
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-primary">Evidence input</p>
+            <label className="mt-1 block text-lg font-semibold tracking-[-0.03em]">Which record should enter the instrument?</label>
+          </div>
           {listLoading ? (
             <Skeleton className="h-10 w-full" />
           ) : (
@@ -639,7 +661,7 @@ export function DataAnalysisPage() {
             <ExperimentMetaCard id={selectedId} />
           </motion.div>
         )}
-      </div>
+      </LabPanel>
 
       <AnimatePresence mode="wait">
         {selectedId && (
@@ -651,12 +673,11 @@ export function DataAnalysisPage() {
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <FileBarChart className="h-5 w-5 text-primary" />
-                Quantitative Summary
-              </h2>
-            </div>
+            <LabSectionHeader
+              eyebrow="Quantitative layer"
+              title="Pattern before interpretation."
+              description="Inspect the measured signal and assay quality first. The report is downstream of the evidence—not the other way around."
+            />
 
             {selectedExp && !selectedExp.raw_data_json ? (
               <AttachDataCard
@@ -668,7 +689,7 @@ export function DataAnalysisPage() {
                 <QuantitativeSummaryPanel id={selectedId} />
 
                 {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
-                  <Card className="border-primary/20 dark:bg-card/80">
+                  <Card className="lab-panel overflow-hidden rounded-[1.6rem] border-primary/20 dark:bg-card/80">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <FlaskConical className="h-4 w-4 text-primary" />
@@ -695,7 +716,7 @@ export function DataAnalysisPage() {
                       meanNeg={controlMetrics.meanNeg}
                     />
                   ) : (
-                    <Card className="border-dashed border-primary/30 bg-primary/5">
+                    <Card className="lab-panel rounded-[1.6rem] border-dashed border-primary/30 bg-primary/5">
                       <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4">
                         <div className="flex items-center gap-3">
                           <TrendingUp className="h-5 w-5 text-primary flex-shrink-0" />
@@ -720,7 +741,7 @@ export function DataAnalysisPage() {
 
             {selectedExp?.raw_data_json && (
             <div className="pt-2">
-              <Card className="border-primary/20 dark:bg-card/80">
+              <Card className="lab-panel overflow-hidden rounded-[1.8rem] border-primary/25 dark:bg-card/80">
                 <CardHeader className="pb-3 border-b border-border">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
@@ -745,18 +766,20 @@ export function DataAnalysisPage() {
                               suggestions: [],
                               detailedReport: report,
                             })}
+                            data-feedback="export"
+                            data-feedback-message="Preparing the AI analysis report"
                           >
                             <FileDown className="h-3.5 w-3.5" />
                             Export PDF
                           </Button>
-                          <Button variant="outline" size="sm" onClick={reset} className="gap-1.5">
+                          <Button variant="outline" size="sm" onClick={reset} className="gap-1.5" data-feedback="filter" data-feedback-message="Clearing the current analysis">
                             <RotateCcw className="h-3.5 w-3.5" />
                             Reset
                           </Button>
                         </>
                       )}
                       {!isStreaming && (
-                        <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5">
+                        <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5" data-feedback="analyze" data-feedback-message="Listening for what matters most in this analysis">
                           <Sparkles className="h-3.5 w-3.5" />
                           {focusNote.trim() ? "Change focus" : "Set focus"}
                         </Button>
@@ -766,6 +789,8 @@ export function DataAnalysisPage() {
                         onClick={generateReport}
                         disabled={isStreaming || !selectedId}
                         className="gap-1.5"
+                        data-feedback="analyze"
+                        data-feedback-message="Reading this plate and its experimental context"
                       >
                         {isStreaming ? (
                           <>
@@ -844,18 +869,19 @@ export function DataAnalysisPage() {
                 design/run discussion and follow-up questions about this report
                 live in one continuous thread. */}
             {selectedExp?.conversation_id && (
-              <div className="pt-2">
-                <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
-                  <MessageSquare className="h-4 w-4 text-primary" />
-                  Ask about this data
-                </h3>
+              <div className="space-y-4 pt-4">
+                <LabSectionHeader
+                  eyebrow="Interrogate the evidence"
+                  title="Ask the data a better question."
+                  description="This is the same conversation as the experiment record, so interpretation never loses the design decisions behind it."
+                />
                 <CopilotChat conversationId={selectedExp.conversation_id} />
               </div>
             )}
 
             {/* Compare — pick a second experiment and stream an AI comparison. */}
             <div className="pt-2">
-              <Card className="border-primary/20 dark:bg-card/80">
+              <Card className="lab-panel overflow-hidden rounded-[1.8rem] border-primary/20 dark:bg-card/80">
                 <CardHeader className="pb-3 border-b border-border">
                   <CardTitle className="text-base flex items-center gap-2">
                     <GitCompare className="h-5 w-5 text-primary" />
@@ -886,7 +912,14 @@ export function DataAnalysisPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button size="sm" onClick={runCompare} disabled={!compareId || comparing} className="gap-1.5">
+                    <Button
+                      size="sm"
+                      onClick={runCompare}
+                      disabled={!compareId || comparing}
+                      className="gap-1.5"
+                      data-feedback="analyze"
+                      data-feedback-message="Lining up both experiments and their evidence"
+                    >
                       {comparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitCompare className="h-3.5 w-3.5" />}
                       {comparing ? "Comparing…" : "Compare"}
                     </Button>
@@ -917,12 +950,19 @@ export function DataAnalysisPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground"
+            className="lab-panel relative flex min-h-[430px] flex-col items-center justify-center overflow-hidden rounded-[2rem] px-6 py-20 text-center text-muted-foreground"
           >
-            <BarChart3 className="h-12 w-12 mb-4 opacity-20" />
-            <p className="text-base font-medium">Select an experiment to begin</p>
-            <p className="text-sm mt-1 max-w-sm">
-              Choose a Synergy H1 experiment from the dropdown above to view its quantitative metrics and generate an AI report.
+            <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] [background-size:32px_32px]" aria-hidden="true" />
+            <motion.div
+              className="relative mb-6 grid h-24 w-24 place-items-center rounded-[2rem] border border-primary/25 bg-primary/10 text-primary"
+              animate={{ y: [0, -6, 0], boxShadow: ["0 0 0 hsl(var(--primary)/0)", "0 0 50px hsl(var(--primary)/0.18)", "0 0 0 hsl(var(--primary)/0)"] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <FileBarChart className="h-10 w-10" />
+            </motion.div>
+            <p className="relative text-3xl font-semibold tracking-[-0.05em] text-foreground">The instrument is listening.</p>
+            <p className="relative mt-3 max-w-lg text-sm leading-6">
+              Choose an experiment above. Its numbers, plate geography, analysis history, and comparison context will assemble here as one responsive evidence surface.
             </p>
           </motion.div>
         )}

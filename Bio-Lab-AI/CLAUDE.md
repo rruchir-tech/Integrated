@@ -120,6 +120,10 @@ GEMINI_API_KEY=<google-gemini-api-key>
 CLERK_SECRET_KEY=<clerk-secret-key>
 VITE_CLERK_PUBLISHABLE_KEY=<clerk-publishable-key>
 
+# Local-only demo escape hatch (must be explicit; refused in production)
+ENABLE_DEMO_MODE=false
+VITE_ENABLE_DEMO_MODE=false
+
 # Admin access — comma-separated emails
 ADMIN_EMAILS=you@example.com
 VITE_ADMIN_EMAIL=you@example.com
@@ -176,7 +180,7 @@ VITE_ADMIN_EMAIL=you@example.com
 `lib/integrations-gemini-ai` now uses `GEMINI_API_KEY` directly via `@google/genai`. No Replit proxy required.
 
 ### ✅ FIXED — Clerk Auth
-`clerkProxyMiddleware` removed from `app.ts`. Using standard `clerkMiddleware()` with `CLERK_SECRET_KEY` env var.
+`clerkProxyMiddleware` removed from `app.ts`. Using standard `clerkMiddleware()` with `CLERK_SECRET_KEY` env var. Missing Clerk keys fail closed; unauthenticated demo mode requires explicit `ENABLE_DEMO_MODE=true` and `VITE_ENABLE_DEMO_MODE=true` in local development and is refused in production.
 
 ### ✅ FIXED — Hardcoded Admin Email
 Admin email now read from `ADMIN_EMAILS` env var (server) and `VITE_ADMIN_EMAIL` (frontend).
@@ -276,3 +280,5 @@ PORT=3001 pnpm --filter @workspace/api-server run dev
 # Terminal 2 — Frontend
 PORT=8081 BASE_PATH=/ pnpm --filter @workspace/lab-copilot run dev
 ```
+
+For a local demo without Clerk, explicitly add `ENABLE_DEMO_MODE=true` and `VITE_ENABLE_DEMO_MODE=true` to `.env`. Do not use demo mode on a shared or production host.

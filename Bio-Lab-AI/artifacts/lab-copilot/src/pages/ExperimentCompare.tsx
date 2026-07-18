@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader } from "@/components/lab/LivingLab";
 
 
 function ExperimentCard({ id }: { id: number }) {
@@ -45,7 +46,7 @@ function ExperimentCard({ id }: { id: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card className="h-full border-primary/20 dark:bg-card/80">
+      <Card className="lab-panel h-full rounded-[1.6rem] border-primary/20 dark:bg-card/80">
         <CardHeader className="pb-3 border-b border-border">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-base leading-tight text-primary">{data.name}</CardTitle>
@@ -186,18 +187,21 @@ export function ExperimentCompare() {
   ];
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex items-center gap-3 border-b pb-5">
-        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-          <GitCompare className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Compare Experiments</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Select two experiments to see a side-by-side AI analysis of what differed and why.
-          </p>
-        </div>
-      </div>
+    <div className="lab-page space-y-7 pb-12" data-accent="rose">
+      <LabPageHeader
+        eyebrow="Counterfactual evidence lens"
+        title="Put two truths in tension."
+        description="Align two experimental records, expose the variables that moved, and ask why their outcomes converged—or refused to."
+        icon={GitCompare}
+        accent="rose"
+        status={canCompare ? "Pair locked" : "Awaiting a pair"}
+      />
+
+      <LabConversation accent="rose">
+        {canCompare
+          ? "Both records are aligned. Choose the scientific question that matters and I’ll reason across their design context, evidence, and outcomes."
+          : "Give me two different experiment records. I’ll keep them visually paired so the comparison always shows what each claim is grounded in."}
+      </LabConversation>
 
       {/* Experiment selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -208,7 +212,7 @@ export function ExperimentCompare() {
           const otherSelectedId = isA ? expBId : expAId;
 
           return (
-            <div key={label} className="space-y-3">
+            <LabPanel key={label} accent={isA ? "violet" : "rose"} className="space-y-4 p-4 sm:p-5">
               <div className="flex items-center gap-2">
                 <Badge
                   variant="outline"
@@ -249,7 +253,7 @@ export function ExperimentCompare() {
               </Select>
 
               {selectedId && <ExperimentCard id={selectedId} />}
-            </div>
+            </LabPanel>
           );
         })}
       </div>
@@ -264,15 +268,16 @@ export function ExperimentCompare() {
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
-            <div className="border-t pt-5">
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <BrainCircuit className="h-5 w-5 text-primary" />
-                AI Comparison
-              </h2>
+            <LabPanel accent="rose" className="p-5 sm:p-7">
+              <LabSectionHeader
+                eyebrow="Comparative reasoning"
+                title="Ask what changed—and why."
+                description="Start broad or point the analysis at one variable, quality concern, or decision you need to make next."
+              />
 
               {/* Preset questions */}
               {!hasResult && !isStreaming && (
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="mb-4 mt-6 flex flex-wrap gap-2">
                   {PRESET_QUESTIONS.map((q) => (
                     <button
                       key={q}
@@ -335,7 +340,7 @@ export function ExperimentCompare() {
                     animate={{ opacity: 1 }}
                     className="relative"
                   >
-                    <Card className="border-primary/20 dark:bg-card/60">
+                    <Card className="mt-5 rounded-[1.5rem] border-primary/20 dark:bg-card/60">
                       <CardContent className="pt-5">
                         <div className="prose prose-sm dark:prose-invert max-w-none break-words">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -410,16 +415,17 @@ export function ExperimentCompare() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
+            </LabPanel>
           </motion.div>
         )}
       </AnimatePresence>
 
       {!canCompare && (
-        <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-          <GitCompare className="h-12 w-12 opacity-20 mb-3" />
-          <p className="text-sm font-mono">
-            Select two different experiments above to begin the comparison.
+        <div className="lab-panel flex min-h-[260px] flex-col items-center justify-center rounded-[2rem] border-dashed px-6 py-16 text-center text-muted-foreground">
+          <GitCompare className="mb-4 h-14 w-14 text-primary/25" />
+          <p className="text-xl font-semibold tracking-[-0.04em] text-foreground">The lens needs two records.</p>
+          <p className="mt-2 max-w-md text-sm leading-6">
+            Select a different experiment on each side. Their evidence and context will remain visible while the comparison speaks.
           </p>
         </div>
       )}

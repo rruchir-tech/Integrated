@@ -1,17 +1,33 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Beaker, Plus, Atom, Sun, Moon, GitCompare, LogOut, User, BarChart3, BookTemplate, ClipboardList, FolderKanban } from "lucide-react";
+import {
+  Activity,
+  Atom,
+  BarChart3,
+  Beaker,
+  BookTemplate,
+  ChevronRight,
+  ClipboardList,
+  FolderKanban,
+  GitCompare,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Moon,
+  Plus,
+  Sun,
+  User,
+} from "lucide-react";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useRef, useState, type UIEvent } from "react";
 import { Progress } from "@/components/ui/progress";
 import { CommandPaletteTrigger } from "@/components/CommandPalette";
 import { useAppUser } from "@/contexts/UserContext";
 import { isEnabled } from "@/lib/features";
+import { AmbientBackdrop } from "@/components/layout/AmbientBackdrop";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +35,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  shortcut?: string;
+  active: boolean;
+  count?: number | null;
+  show: boolean;
+};
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -28,7 +60,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const resolvedTheme = theme ?? "dark";
   const [scrollProgress, setScrollProgress] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { displayName, initials, email, isAdmin, isLoaded, signOut } = useAppUser();
 
   const greeting = useMemo(() => {
@@ -38,217 +71,299 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return "Good evening";
   }, []);
 
-  useEffect(() => {
-    const onScroll = () => {
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      const value = max > 0 ? (window.scrollY / max) * 100 : 0;
-      setScrollProgress(Math.max(0, Math.min(100, value)));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const navItems: NavItem[] = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, shortcut: "G D", active: location === "/dashboard" || location === "/", show: true },
+    { href: "/experiments", label: "Experiments", icon: Beaker, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null, show: true },
+    { href: "/projects", label: "Projects", icon: FolderKanban, shortcut: "G P", active: location.startsWith("/projects"), show: true },
+    { href: "/experiments/compare", label: "Compare", icon: GitCompare, shortcut: "G C", active: location === "/experiments/compare", show: isEnabled("compare") },
+    { href: "/data-analysis", label: "Data Analysis", icon: BarChart3, shortcut: "G A", active: location === "/data-analysis", show: isEnabled("dataAnalysis") },
+    { href: "/templates", label: "Templates", icon: BookTemplate, shortcut: "G T", active: location === "/templates", show: isEnabled("templates") },
+    { href: "/tasks", label: "Tasks", icon: ClipboardList, shortcut: "G K", active: location === "/tasks", show: isEnabled("tasks") },
+    { href: "/admin", label: "Admin", icon: User, active: location === "/admin", show: isAdmin },
+  ];
 
-  const playClick = () => {
-    if (!soundEnabled) return;
-    const audio = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
-    audio.volume = 0.05;
-    audio.play().catch(() => undefined);
+  const onContentScroll = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const max = target.scrollHeight - target.clientHeight;
+    setScrollProgress(max > 0 ? Math.max(0, Math.min(100, (target.scrollTop / max) * 100)) : 0);
   };
 
-  return (
-    <PanelGroup direction="horizontal" className="h-screen w-full overflow-hidden bg-background app-noise">
-      <Panel defaultSize={20} minSize={18} maxSize={30} className="relative flex min-w-[220px] max-w-[320px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.04),transparent_28%,rgba(0,0,0,.18))]" />
-        <div className="h-14 flex items-center px-4 font-semibold text-lg border-b border-sidebar-border gap-2 relative z-10">
-          <motion.div
-            className="relative"
-            animate={{ rotate: 360 }}
-            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+  const routeLabel = location
+    .split("/")
+    .filter(Boolean)
+    .map((part) => part.replace(/-/g, " "))
+    .join(" / ") || "dashboard";
+
+  const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark");
+
+  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(64,214,225,.11),transparent_32%),linear-gradient(180deg,rgba(255,255,255,.025),transparent_24%,rgba(0,0,0,.16))]" />
+      <div className="pointer-events-none absolute inset-0 app-noise-fine opacity-30" />
+
+      <div className="relative z-10 flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border/80 px-4">
+        <Link
+          href="/dashboard"
+          className="group flex items-center gap-3"
+          onClick={() => mobile && setMobileNavOpen(false)}
+          data-feedback="navigate"
+          data-feedback-message="Returning to the lab overview"
+        >
+          <motion.span
+            className="premium-ring flex h-9 w-9 items-center justify-center rounded-xl border border-sidebar-border bg-sidebar-accent/60"
+            whileHover={{ rotate: 12, scale: 1.05 }}
+            transition={{ type: "spring", stiffness: 320, damping: 20 }}
           >
-            <Atom className="h-5 w-5 text-sidebar-primary" />
-          </motion.div>
-          <span className="tracking-wide">Bioalyzer</span>
-        </div>
-
-        <div className="px-4 pt-4 pb-2 relative z-10">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 space-y-2 hover:bg-sidebar-accent/50 transition-colors text-left">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-sidebar-primary/20 border border-sidebar-primary/30 flex items-center justify-center text-[11px] font-bold text-sidebar-primary">
-                    {isLoaded ? initials : "?"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{isLoaded ? displayName : greeting}</div>
-                    <div className="text-xs text-sidebar-foreground/60 truncate">
-                      {email}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs text-sidebar-foreground/60">
-                  {Array.isArray(experiments) && experiments.length ? `${experiments.length} experiments tracked` : "No experiments yet"}
-                </div>
-                <Progress value={Math.min(100, (Array.isArray(experiments) ? experiments.length : 0) * 10)} className="h-1.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">{displayName}</p>
-                <p className="text-xs text-muted-foreground truncate">{email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 cursor-pointer" disabled>
-                <User className="h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => signOut()}
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <nav className="flex-1 overflow-hidden py-4 flex flex-col gap-6 relative z-10">
-          <div className="px-3 flex flex-col gap-1">
-            {[
-              { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, shortcut: "G D", active: location === "/dashboard" || location === "/", count: null, show: true },
-              { href: "/experiments", label: "Experiments", icon: <Beaker className="h-4 w-4" />, shortcut: "G E", active: location.startsWith("/experiments") && location !== "/experiments/new" && location !== "/experiments/compare", count: Array.isArray(experiments) ? experiments.length : null, show: true },
-              { href: "/projects", label: "Projects", icon: <FolderKanban className="h-4 w-4" />, shortcut: "G P", active: location.startsWith("/projects"), count: null, show: true },
-              { href: "/experiments/compare", label: "Compare", icon: <GitCompare className="h-4 w-4" />, shortcut: "G C", active: location === "/experiments/compare", count: null, show: isEnabled("compare") },
-              { href: "/data-analysis", label: "Data Analysis", icon: <BarChart3 className="h-4 w-4" />, shortcut: "G A", active: location === "/data-analysis", count: null, show: isEnabled("dataAnalysis") },
-              { href: "/templates", label: "Templates", icon: <BookTemplate className="h-4 w-4" />, shortcut: "G T", active: location === "/templates", count: null, show: isEnabled("templates") },
-              { href: "/tasks", label: "Tasks", icon: <ClipboardList className="h-4 w-4" />, shortcut: "G K", active: location === "/tasks", count: null, show: isEnabled("tasks") },
-            ].filter((item) => item.show).map(({ href, label, icon, shortcut, active, count }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-primary"
-                    : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80 hover:text-sidebar-foreground border-l-2 border-transparent hover:border-sidebar-primary/50"
-                }`}
-                onClick={playClick}
-              >
-                {icon}
-                <span className="flex-1">{label}</span>
-                {count !== null && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-sidebar-accent text-sidebar-foreground/60 group-hover:hidden">
-                    {count}
-                  </span>
-                )}
-                <kbd className="hidden group-hover:flex items-center text-[9px] font-mono text-sidebar-foreground/40 border border-sidebar-border rounded px-1 py-0.5 gap-0.5">
-                  {shortcut}
-                </kbd>
-              </Link>
-            ))}
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  location === "/admin"
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-primary"
-                    : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80 hover:text-sidebar-foreground border-l-2 border-transparent hover:border-sidebar-primary/50"
-                }`}
-                onClick={playClick}
-              >
-                <User className="h-4 w-4" />
-                <span className="flex-1">Admin</span>
-              </Link>
-            )}
+            <Atom className="h-[18px] w-[18px] text-sidebar-primary" />
+          </motion.span>
+          <div>
+            <span className="block text-[15px] font-semibold tracking-wide">Bioalyzer</span>
+            <span className="block font-mono text-[9px] uppercase tracking-[0.18em] text-sidebar-foreground/35">Lab intelligence</span>
           </div>
+        </Link>
+        <span className="signal-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
+      </div>
 
-          <div className="px-3 flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-3 mb-2">
-              <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-                Recent
-              </span>
-              <Link
-                href="/experiments/new"
-                className="text-sidebar-foreground/50 hover:text-sidebar-primary transition-colors"
-                title="New Experiment"
-              >
-                <Plus className="h-4 w-4" />
-              </Link>
-            </div>
-            <ScrollArea className="flex-1 -mx-3">
-              <div className="px-3 flex flex-col gap-1">
-                {Array.isArray(experiments) && experiments.slice(0, 10).map((exp, index) => (
-                  <motion.div
-                    key={exp.id}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Link
-                      href={`/experiments/${exp.id}`}
-                      className={`flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
-                        location === `/experiments/${exp.id}`
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-primary"
-                          : "hover:bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground border-l-2 border-transparent"
-                      }`}
-                      onClick={playClick}
-                    >
-                      <span className="truncate mr-2">{exp.name}</span>
-                      <div className="flex-shrink-0 transform scale-75 origin-right">
-                        <StatusBadge status={exp.status} />
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        </nav>
-        
-        <div className="p-4 border-t border-sidebar-border mt-auto relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/45">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.9)]" />
-            Workspace online
-          </div>
-          <button
-            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            className="p-2 rounded-full hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
-            aria-label="Toggle theme"
-          >
-            <motion.div
-              initial={false}
-              animate={{ rotate: resolvedTheme === "dark" ? 0 : 180 }}
-              transition={{ duration: 0.3 }}
+      <div className="relative z-10 px-3 pb-2 pt-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="interactive-lift w-full rounded-xl border border-sidebar-border/90 bg-sidebar-accent/30 p-3 text-left hover:border-sidebar-primary/20 hover:bg-sidebar-accent/55"
+              data-feedback="neutral"
+              data-feedback-message="Opening your workspace profile"
             >
-              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </motion.div>
-          </button>
-        </div>
-      </Panel>
-      <PanelResizeHandle className="w-1 bg-sidebar-border hover:bg-primary/60 transition-colors cursor-col-resize relative group">
-        <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/20 dark:group- transition-all" />
-      </PanelResizeHandle>
-      <Panel className="flex flex-col min-w-0 overflow-hidden bg-background/95">
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <div className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex items-center justify-between px-6 md:px-8 py-2 max-w-7xl mx-auto w-full gap-4">
-              <div className="text-xs font-mono text-muted-foreground">
-                {location.replace("/", "") || "dashboard"}
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sidebar-primary/25 bg-sidebar-primary/10 text-[10px] font-bold text-sidebar-primary shadow-[0_0_24px_rgba(40,190,205,.08)]">
+                  {isLoaded ? initials : "?"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{isLoaded ? displayName : greeting}</div>
+                  <div className="truncate text-[11px] text-sidebar-foreground/42">{email}</div>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-sidebar-foreground/25" />
               </div>
-              <div className="flex items-center gap-3">
-                <CommandPaletteTrigger />
-                <Progress value={scrollProgress} className="w-28 h-1.5" aria-label="Scroll progress" />
+              <div className="mt-3 flex items-center justify-between text-[10px] text-sidebar-foreground/38">
+                <span>{Array.isArray(experiments) && experiments.length ? `${experiments.length} experiments` : "Workspace ready"}</span>
+                <span className="font-mono">{Math.min(100, (Array.isArray(experiments) ? experiments.length : 0) * 10)}%</span>
               </div>
+              <Progress value={Math.min(100, (Array.isArray(experiments) ? experiments.length : 0) * 10)} className="mt-2 h-1" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-60">
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium">{displayName}</p>
+              <p className="truncate text-xs text-muted-foreground">{email}</p>
             </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2" disabled>
+              <User className="h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              onClick={() => signOut()}
+              data-feedback="danger"
+              data-feedback-message="Signing out of this workspace"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <nav className="relative z-10 flex min-h-0 flex-1 flex-col gap-5 overflow-hidden py-3" aria-label="Workspace navigation">
+        <div className="flex flex-col gap-1 px-3">
+          <span className="mb-1 px-3 font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/28">Workspace</span>
+          {navItems.filter((item) => item.show).map((item) => {
+            const Icon = item.icon;
+            return (
+              <motion.div key={item.href} whileHover={{ x: 2 }} transition={{ type: "spring", stiffness: 400, damping: 28 }}>
+                <Link
+                  href={item.href}
+                  onClick={() => mobile && setMobileNavOpen(false)}
+                  data-feedback="navigate"
+                  data-feedback-message={`Moving to ${item.label.toLowerCase()}`}
+                  className={`group relative flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors ${
+                    item.active ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/62 hover:text-sidebar-foreground"
+                  }`}
+                >
+                  {item.active && (
+                    <motion.span
+                      layoutId={mobile ? "mobile-sidebar-active" : "desktop-sidebar-active"}
+                      className="absolute inset-0 rounded-lg border border-sidebar-primary/15 bg-sidebar-accent shadow-[inset_2px_0_hsl(var(--sidebar-primary)),0_8px_24px_rgba(0,0,0,.12)]"
+                      transition={{ type: "spring", stiffness: 350, damping: 32 }}
+                    />
+                  )}
+                  <Icon className={`relative z-10 h-4 w-4 ${item.active ? "text-sidebar-primary" : "text-sidebar-foreground/42 group-hover:text-sidebar-primary"}`} />
+                  <span className="relative z-10 flex-1">{item.label}</span>
+                  {item.count !== undefined && item.count !== null && (
+                    <span className="relative z-10 rounded-full border border-sidebar-border bg-sidebar/55 px-1.5 py-0.5 font-mono text-[9px] text-sidebar-foreground/45">{item.count}</span>
+                  )}
+                  {item.shortcut && (
+                    <kbd className="relative z-10 hidden rounded border border-sidebar-border px-1 py-0.5 font-mono text-[8px] text-sidebar-foreground/25 group-hover:block">{item.shortcut}</kbd>
+                  )}
+                </Link>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col px-3">
+          <div className="mb-2 flex items-center justify-between px-3">
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sidebar-foreground/28">Recent runs</span>
+            <Link
+              href="/experiments/new"
+              onClick={() => mobile && setMobileNavOpen(false)}
+              className="rounded-md p-1 text-sidebar-foreground/35 transition hover:bg-sidebar-accent hover:text-sidebar-primary"
+              title="New Experiment"
+              data-feedback="create"
+              data-feedback-message="Opening a fresh experiment record"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Link>
           </div>
-          <ScrollArea className="flex-1">
-            <div className="p-6 md:p-8 max-w-7xl mx-auto w-full min-h-full">
-              {children}
+          <ScrollArea className="-mx-3 flex-1">
+            <div className="flex flex-col gap-0.5 px-3">
+              {Array.isArray(experiments) && experiments.slice(0, 10).map((experiment, index) => (
+                <motion.div key={experiment.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.12 + index * 0.035 }}>
+                  <Link
+                    href={`/experiments/${experiment.id}`}
+                    onClick={() => mobile && setMobileNavOpen(false)}
+                    data-feedback="navigate"
+                    data-feedback-message={`Opening ${experiment.name}`}
+                    className={`group flex items-center justify-between rounded-lg px-3 py-2 text-xs transition ${
+                      location === `/experiments/${experiment.id}` ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/46 hover:bg-sidebar-accent/55 hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <span className="mr-2 truncate">{experiment.name}</span>
+                    <span className="shrink-0 origin-right scale-[0.72]"><StatusBadge status={experiment.status} /></span>
+                  </Link>
+                </motion.div>
+              ))}
+              {(!Array.isArray(experiments) || experiments.length === 0) && (
+                <div className="rounded-xl border border-dashed border-sidebar-border px-3 py-5 text-center">
+                  <Activity className="mx-auto h-4 w-4 text-sidebar-foreground/25" />
+                  <p className="mt-2 text-[10px] leading-4 text-sidebar-foreground/35">Your recent runs will appear here.</p>
+                </div>
+              )}
             </div>
           </ScrollArea>
-        </main>
-      </Panel>
-    </PanelGroup>
+        </div>
+      </nav>
+
+      <div className="relative z-10 mt-auto flex shrink-0 items-center justify-between border-t border-sidebar-border/80 px-4 py-3.5">
+        <div className="flex items-center gap-2 text-[10px] text-sidebar-foreground/35">
+          <span className="signal-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
+          Workspace online
+        </div>
+        <motion.button
+          onClick={toggleTheme}
+          className="rounded-lg border border-sidebar-border bg-sidebar-accent/35 p-2 text-sidebar-foreground/55 hover:text-sidebar-foreground"
+          aria-label="Toggle theme"
+          data-feedback="theme"
+          data-feedback-message={`Switching to ${resolvedTheme === "dark" ? "light" : "dark"} mode`}
+          whileTap={{ scale: 0.9 }}
+        >
+          <motion.span className="block" animate={{ rotate: resolvedTheme === "dark" ? 0 : 180 }} transition={{ duration: 0.35 }}>
+            {resolvedTheme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </motion.span>
+        </motion.button>
+      </div>
+    </div>
+  );
+
+  const mobileDockItems = navItems.filter((item) => ["/dashboard", "/experiments", "/projects"].includes(item.href));
+
+  return (
+    <div className="relative flex h-[100dvh] w-full overflow-hidden bg-background app-noise">
+      <AmbientBackdrop />
+
+      <aside className="relative z-30 hidden h-full w-[272px] shrink-0 border-r border-sidebar-border/80 shadow-[18px_0_70px_rgba(0,0,0,.16)] lg:block">
+        <SidebarContent />
+      </aside>
+
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="w-[288px] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground sm:max-w-[288px]">
+          <SheetHeader className="sr-only"><SheetTitle>Workspace navigation</SheetTitle></SheetHeader>
+          <SidebarContent mobile />
+        </SheetContent>
+      </Sheet>
+
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+        <header className="relative z-30 flex h-16 shrink-0 items-center border-b border-border/65 bg-background/68 px-4 backdrop-blur-2xl sm:px-6">
+          <motion.div className="absolute inset-x-0 bottom-0 h-px origin-left bg-gradient-to-r from-primary via-emerald-400 to-violet-400" animate={{ width: `${scrollProgress}%` }} transition={{ type: "spring", stiffness: 180, damping: 30 }} />
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="mr-3 rounded-lg border border-border/75 bg-card/50 p-2 text-muted-foreground transition hover:border-primary/25 hover:text-foreground lg:hidden"
+            aria-label="Open navigation"
+            data-feedback="neutral"
+            data-feedback-message="Opening the workspace map"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
+              <span className="hidden sm:inline">Workspace</span>
+              <ChevronRight className="hidden h-3 w-3 sm:block" />
+              <span className="truncate text-foreground/65">{routeLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden sm:block"><CommandPaletteTrigger /></div>
+            <div className="hidden items-center gap-2 rounded-lg border border-border/65 bg-card/45 px-3 py-2 md:flex">
+              <span className="signal-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
+              <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Live workspace</span>
+            </div>
+            <button
+              onClick={toggleTheme}
+              className="rounded-lg border border-border/75 bg-card/50 p-2 text-muted-foreground transition hover:border-primary/25 hover:text-foreground lg:hidden"
+              aria-label="Toggle theme"
+              data-feedback="theme"
+              data-feedback-message={`Switching to ${resolvedTheme === "dark" ? "light" : "dark"} mode`}
+            >
+              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+          </div>
+        </header>
+
+        <div ref={scrollContainerRef} data-workspace-scroll onScroll={onContentScroll} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <main className="relative mx-auto min-h-full w-full max-w-[1480px] px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10 xl:px-10">
+            {children}
+          </main>
+        </div>
+
+        <nav className="glass-panel fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl p-1.5 shadow-2xl lg:hidden" aria-label="Quick navigation">
+          {mobileDockItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-feedback="navigate"
+                data-feedback-message={`Moving to ${item.label.toLowerCase()}`}
+                className={`relative flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[9px] font-medium transition ${item.active ? "text-primary" : "text-muted-foreground"}`}
+              >
+                {item.active && <motion.span layoutId="mobile-dock-active" className="absolute inset-0 rounded-xl border border-primary/15 bg-primary/[0.08]" />}
+                <Icon className="relative z-10 h-4 w-4" />
+                <span className="relative z-10">{item.label}</span>
+              </Link>
+            );
+          })}
+          <Link
+            href="/experiments/new"
+            className="soft-glow relative -mt-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg"
+            aria-label="New experiment"
+            data-feedback="create"
+            data-feedback-message="Opening a fresh experiment record"
+          >
+            <Plus className="h-5 w-5" />
+          </Link>
+        </nav>
+      </div>
+    </div>
   );
 }

@@ -1,35 +1,45 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
-import { apiFetch } from "@/lib/apiFetch";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useLocation } from "wouter";
-import { useCreateExperiment } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { Loader2, BookTemplate, CheckCircle2 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getListExperimentsQueryKey, useCreateExperiment } from "@workspace/api-client-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Beaker,
+  BookTemplate,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  CircleDot,
+  FlaskConical,
+  Gauge,
+  Lightbulb,
+  Loader2,
+  Microscope,
+  NotebookPen,
+  Orbit,
+  Sparkles,
+  Target,
+} from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { getListExperimentsQueryKey } from "@workspace/api-client-react";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  LabConversation,
+  LabPageHeader,
+  LabPanel,
+  LabSectionHeader,
+  type LabAccent,
+} from "@/components/lab/LivingLab";
 
 interface Template {
   id: number;
@@ -41,34 +51,37 @@ interface Template {
   description: string | null;
 }
 
-// Create-time status is a short, fixed set of PROCESS stages (where is this
-// experiment in its lifecycle), not an outcome — outcome (success/failed) gets
-// set later once the plate data is quantified in the Data Analysis tab.
 const CREATE_STATUSES = ["designing", "ready", "running"] as const;
 type CreateStatus = (typeof CREATE_STATUSES)[number];
 
 function normalizeTemplateStatus(value: string | null | undefined): CreateStatus {
-  return (CREATE_STATUSES as readonly string[]).includes(value ?? "") ? (value as CreateStatus) : "designing";
+  return (CREATE_STATUSES as readonly string[]).includes(value ?? "") ? value as CreateStatus : "designing";
 }
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   date: z.string(),
-  assay_type: z.string().min(2, "Describe the goal / assay type"),
+  assay_type: z.string().min(2, "Describe the scientific goal"),
   instrument: z.string().default("Generic"),
   notes: z.string().optional(),
   status: z.enum(CREATE_STATUSES).default("designing"),
 });
 
+const workflowSteps = [
+  { title: "Frame the run", copy: "Name the question and experimental setup.", icon: Target, accent: "cyan" as LabAccent },
+  { title: "Verify the record", copy: "Read the manifest before it becomes memory.", icon: CheckCircle2, accent: "emerald" as LabAccent },
+];
+
 export function ExperimentForm() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [step, setStep] = useState(0);
 
   const { data: templates } = useQuery<Template[]>({
     queryKey: ["templates"],
-    queryFn: () => apiFetch("/api/templates").then((r) => r.json()),
+    queryFn: () => apiFetch("/api/templates").then((response) => response.json()),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -86,287 +99,227 @@ export function ExperimentForm() {
   const createMutation = useCreateExperiment({
     mutation: {
       onSuccess: (data) => {
-        toast({ title: "Experiment created", description: "Now design the protocol — upload an existing SOP or ask the AI." });
+        toast({ title: "Experiment created", description: "The record is alive. Add the protocol or attach the first signal." });
         queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey() });
         setLocation(`/experiments/${data.id}`);
       },
-      onError: (err) => {
-        const message = "error" in err && err.error ? String((err as { error?: { error?: string } }).error?.error ?? "Unknown error occurred") : "Unknown error occurred";
-        toast({
-          title: "Error creating experiment",
-          description: message,
-          variant: "destructive"
-        });
-      }
-    }
+      onError: (error) => {
+        const message = "error" in error && error.error
+          ? String((error as { error?: { error?: string } }).error?.error ?? "Unknown error occurred")
+          : "Unknown error occurred";
+        toast({ title: "Couldn’t create experiment", description: message, variant: "destructive" });
+      },
+    },
   });
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    createMutation.mutate({ data: values });
-  };
+  const values = form.watch();
+  const completeness = [values.name?.length >= 2, values.assay_type?.length >= 2, Boolean(values.date), Boolean(values.instrument), Boolean(values.notes)].filter(Boolean).length;
+  const canProceed = values.name?.length >= 2 && values.assay_type?.length >= 2;
 
   function applyTemplate(id: string) {
-    const t = templates?.find((t) => String(t.id) === id);
-    if (!t) return;
+    const template = templates?.find((item) => String(item.id) === id);
+    if (!template) return;
     setSelectedTemplateId(id);
-    form.setValue("assay_type", t.assay_type);
-    form.setValue("instrument", t.instrument);
-    if (t.default_notes) form.setValue("notes", t.default_notes);
-    form.setValue("status", normalizeTemplateStatus(t.expected_status_default));
-    toast({ title: `Template applied: ${t.name}`, description: "Fields have been pre-filled. Adjust as needed." });
+    form.setValue("assay_type", template.assay_type);
+    form.setValue("instrument", template.instrument);
+    if (template.default_notes) form.setValue("notes", template.default_notes);
+    form.setValue("status", normalizeTemplateStatus(template.expected_status_default));
+    toast({ title: `Template applied: ${template.name}`, description: "The starting structure is ready for your judgment." });
   }
 
-  const STEPS = ["Experiment Details", "Review & Save"];
-  const [step, setStep] = useState(0);
-
-  const canProceedToStep2 = form.watch("name")?.length >= 2 && form.watch("assay_type")?.length >= 2;
-
   return (
-    <div className="max-w-2xl mx-auto py-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">New Experiment</h1>
-        <p className="text-muted-foreground mt-2">Design the experiment now — the protocol (upload an SOP or ask the AI) and plate data come next, from the experiment page.</p>
-      </div>
-
-      {templates && templates.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-2"
-        >
-          <div className="flex items-center gap-2 text-sm font-medium text-primary">
-            <BookTemplate className="h-4 w-4" />
-            Start from a template
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {templates.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => applyTemplate(String(t.id))}
-                className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
-                  selectedTemplateId === String(t.id)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-primary/30 text-muted-foreground hover:border-primary hover:text-foreground"
-                }`}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-          {selectedTemplateId && (
-            <p className="text-xs text-muted-foreground">
-              Template applied — fields pre-filled. Adjust below as needed.
-            </p>
-          )}
-        </motion.div>
-      )}
-
-      <div className="mb-6">
-        <div className="flex items-center gap-0">
-          {STEPS.map((label, idx) => (
-            <div key={idx} className="flex items-center flex-1 last:flex-none">
-              <motion.button
-                type="button"
-                onClick={() => idx <= step && setStep(idx)}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                  idx === step ? "text-primary" : idx < step ? "text-primary/60 cursor-pointer hover:text-primary" : "text-muted-foreground cursor-not-allowed"
-                }`}
-                whileHover={idx <= step ? { scale: 1.02 } : {}}
-                whileTap={idx <= step ? { scale: 0.98 } : {}}
-              >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                  idx === step
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : idx < step
-                    ? "border-primary/60 bg-primary/20 text-primary"
-                    : "border-border bg-background text-muted-foreground"
-                }`}>
-                  {idx < step ? "✓" : idx + 1}
-                </div>
-                <span className="hidden sm:block">{label}</span>
-              </motion.button>
-              {idx < STEPS.length - 1 && (
-                <div className={`flex-1 h-px mx-3 transition-colors ${idx < step ? "bg-primary/60" : "bg-border"}`} />
-              )}
+    <div className="lab-page">
+      <LabPageHeader
+        eyebrow="Experiment composer"
+        title="Design the record before the data decides the story."
+        description="A clean experiment begins with a clear question. Frame the run now, then Bioalyzer will keep the protocol, source data, analysis, and follow-up decisions attached to it."
+        icon={FlaskConical}
+        accent="cyan"
+        status={`Step ${step + 1} of 2`}
+        actions={
+          <Button variant="outline" size="lg" className="h-11 gap-2 rounded-xl" onClick={() => setLocation("/experiments")} data-feedback="navigate" data-feedback-message="Returning to the experiment archive">
+            <ArrowLeft className="h-4 w-4" /> Back to the archive
+          </Button>
+        }
+        aside={
+          <div className="w-full space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="lab-kicker"><span className="lab-kicker-pulse" />Record quality</p>
+              <span className="font-mono text-xs text-primary">{completeness}/5</span>
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="grid grid-cols-5 gap-2">
+              {Array.from({ length: 5 }, (_, index) => <motion.span key={index} className={`h-16 rounded-lg border ${index < completeness ? "border-primary/35 bg-primary/25" : "border-border/60 bg-background/35"}`} animate={{ opacity: index < completeness ? 1 : 0.45 }} />)}
+            </div>
+            <p className="text-[10px] leading-4 text-muted-foreground">Context becomes more useful as the record gets more specific.</p>
+          </div>
+        }
+      />
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <AnimatePresence mode="wait">
-            {step === 0 && (
-              <motion.div
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField
-                          control={form.control}
-                          name="name"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Experiment Name <span className="text-destructive">*</span></FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., Compound-X Dose Response" {...field} autoFocus />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="date"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Date</FormLabel>
-                              <FormControl><Input type="date" {...field} /></FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="assay_type"
-                          render={({ field }) => (
-                            <FormItem className="md:col-span-2">
-                              <FormLabel>Goal <span className="text-destructive">*</span></FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., MTT viability dose-response to estimate IC50 (plate-reader assays for now)" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="instrument"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Instrument</FormLabel>
-                              <FormControl>
-                                <Input placeholder="e.g., BioTek Synergy H1" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="status"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Status</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="designing">Designing</SelectItem>
-                                  <SelectItem value="ready">Ready to run</SelectItem>
-                                  <SelectItem value="running">Running</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name="notes"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Context for the AI</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                placeholder="Anything the AI should know: cell line, compound, constraints, what you already know or have on hand..."
-                                className="min-h-[120px]"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+      <LabConversation accent={step === 0 ? "cyan" : "emerald"}>
+        {step === 0
+          ? values.name
+            ? `“${values.name}” has a name. Now make the scientific goal precise enough that your future self can understand why this run existed.`
+            : "Start with the question, not the file. A specific name and goal make every later analysis more grounded."
+          : "Read this like a lab notebook entry written by someone else. If the intent is obvious, the record is ready to become memory."}
+      </LabConversation>
 
-                <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={() => setLocation("/experiments")}>Cancel</Button>
-                  <Button
+      <div className="grid items-start gap-5 xl:grid-cols-[290px_minmax(0,1fr)]">
+        <aside className="space-y-4 xl:sticky xl:top-4">
+          <LabPanel className="p-4" accent="cyan">
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Composition sequence</p>
+            <div className="mt-5 space-y-2">
+              {workflowSteps.map((item, index) => {
+                const Icon = item.icon;
+                const active = step === index;
+                const complete = step > index;
+                return (
+                  <button
+                    key={item.title}
                     type="button"
-                    onClick={() => setStep(1)}
-                    disabled={!canProceedToStep2}
+                    onClick={() => index <= step && setStep(index)}
+                    disabled={index > step}
+                    data-accent={item.accent}
+                    data-feedback="navigate"
+                    data-feedback-message={`Moving to ${item.title.toLowerCase()}`}
+                    className={`relative flex w-full gap-3 overflow-hidden rounded-xl border p-3 text-left transition ${active ? "border-[var(--lab-accent)]/30 bg-[var(--lab-accent-soft)]" : "border-transparent hover:border-border/60 hover:bg-background/35"}`}
                   >
-                    Review →
-                  </Button>
-                </div>
-              </motion.div>
-            )}
+                    {active && <motion.span layoutId="composer-step" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-[var(--lab-accent)]" />}
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${active || complete ? "border-[var(--lab-accent)]/25 bg-[var(--lab-accent-soft)] text-[var(--lab-accent)]" : "border-border text-muted-foreground"}`}>
+                      {complete ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                    </span>
+                    <span>
+                      <span className="block text-xs font-semibold">{item.title}</span>
+                      <span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{item.copy}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </LabPanel>
 
-            {step === 1 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4"
-              >
-                <Card className="border-primary/20 bg-primary/5">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-primary" />
-                      Review before saving
-                    </CardTitle>
-                    <CardDescription>Double-check all details before submitting to the database.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      {[
-                        { label: "Name", value: form.watch("name") },
-                        { label: "Date", value: form.watch("date") },
-                        { label: "Goal", value: form.watch("assay_type") },
-                        { label: "Instrument", value: form.watch("instrument") },
-                        { label: "Status", value: form.watch("status") },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="space-y-0.5">
-                          <div className="text-xs font-semibold text-muted-foreground">{label}</div>
-                          <div className="font-medium font-mono text-primary">{value || "—"}</div>
-                        </div>
-                      ))}
+          {templates && templates.length > 0 && (
+            <LabPanel className="p-4" accent="violet">
+              <div className="flex items-center gap-2 text-violet-200"><BookTemplate className="h-4 w-4" /><p className="text-xs font-semibold">Borrow a proven structure</p></div>
+              <p className="mt-2 text-[10px] leading-4 text-muted-foreground">Templates fill the setup. You still own the scientific judgment.</p>
+              <div className="mt-4 space-y-2">
+                {templates.slice(0, 5).map((template) => {
+                  const active = selectedTemplateId === String(template.id);
+                  return (
+                    <button key={template.id} type="button" onClick={() => applyTemplate(String(template.id))} data-feedback="create" data-feedback-message={`Applying the ${template.name} starting structure`} className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-[10px] transition ${active ? "border-violet-300/35 bg-violet-300/10 text-violet-100" : "border-border/60 text-muted-foreground hover:border-violet-300/25 hover:text-foreground"}`}>
+                      <CircleDot className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{template.name}</span>{active && <Check className="ml-auto h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </LabPanel>
+          )}
+
+          <LabPanel className="p-4" accent="amber">
+            <div className="flex gap-3"><Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" /><p className="text-[10px] leading-5 text-muted-foreground">The protocol and raw data come after this record is created. This step captures the intent they need to be interpreted correctly.</p></div>
+          </LabPanel>
+        </aside>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit((submitted) => createMutation.mutate({ data: submitted }))} data-feedback-message="Saving the experiment into your lab memory">
+            <AnimatePresence mode="wait">
+              {step === 0 ? (
+                <motion.div key="compose" initial={{ opacity: 0, x: 20, filter: "blur(5px)" }} animate={{ opacity: 1, x: 0, filter: "blur(0px)" }} exit={{ opacity: 0, x: -14, filter: "blur(4px)" }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
+                  <LabPanel className="p-5 sm:p-7 lg:p-8" accent="cyan">
+                    <LabSectionHeader eyebrow="01 · Frame the run" title="Write the experiment’s identity" description="Use language that will still make sense when this run is one of fifty." />
+                    <div className="mt-8 grid gap-6 md:grid-cols-2">
+                      <FormField control={form.control} name="name" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2"><NotebookPen className="h-3.5 w-3.5 text-primary" /> Experiment name <span className="text-destructive">*</span></FormLabel>
+                          <FormControl><Input className="h-11 rounded-xl" placeholder="Compound-X · MTT dose response" {...field} autoFocus /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="date" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5 text-primary" /> Run date</FormLabel>
+                          <FormControl><Input className="h-11 rounded-xl" type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="assay_type" render={({ field }) => (
+                        <FormItem className="md:col-span-2">
+                          <FormLabel className="flex items-center gap-2"><Target className="h-3.5 w-3.5 text-primary" /> Scientific goal <span className="text-destructive">*</span></FormLabel>
+                          <FormControl><Textarea className="min-h-24 rounded-xl" placeholder="Estimate Compound-X IC50 in the MTT viability assay and identify the concentration range worth repeating." {...field} /></FormControl>
+                          <p className="text-[10px] leading-4 text-muted-foreground">State what you want to learn—not only the assay name.</p>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="instrument" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2"><Microscope className="h-3.5 w-3.5 text-primary" /> Instrument</FormLabel>
+                          <FormControl><Input className="h-11 rounded-xl" placeholder="BioTek Synergy H1" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="status" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2"><Gauge className="h-3.5 w-3.5 text-primary" /> Lifecycle stage</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent><SelectItem value="designing">Designing</SelectItem><SelectItem value="ready">Ready to run</SelectItem><SelectItem value="running">Running</SelectItem></SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="notes" render={({ field }) => (
+                        <FormItem className="md:col-span-2">
+                          <FormLabel className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 text-violet-300" /> Context the copilot should inherit</FormLabel>
+                          <FormControl><Textarea className="min-h-36 rounded-xl" placeholder="Cell line, compound constraints, control strategy, what you already know, and what would make this run useful…" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                     </div>
-                    {form.watch("notes") && (
-                      <div className="mt-4 space-y-0.5">
-                        <div className="text-xs font-semibold text-muted-foreground">Context for the AI</div>
-                        <p className="text-sm text-muted-foreground font-mono whitespace-pre-wrap line-clamp-4">{form.watch("notes")}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <div className="flex justify-between pt-2">
-                  <Button type="button" variant="outline" onClick={() => setStep(0)}>← Edit Details</Button>
-                  <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save Experiment
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </form>
-      </Form>
+                    <div className="mt-8 flex flex-col-reverse gap-3 border-t border-border/65 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-[10px] text-muted-foreground">Required: experiment name + scientific goal</p>
+                      <Button type="button" size="lg" className="gap-2 rounded-xl" disabled={!canProceed} onClick={() => setStep(1)} data-feedback="navigate" data-feedback-message="Reviewing the experiment before it becomes memory">
+                        Review the record <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </LabPanel>
+                </motion.div>
+              ) : (
+                <motion.div key="review" initial={{ opacity: 0, x: 20, filter: "blur(5px)" }} animate={{ opacity: 1, x: 0, filter: "blur(0px)" }} exit={{ opacity: 0, x: -14 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}>
+                  <LabPanel className="p-5 sm:p-7 lg:p-8" accent="emerald">
+                    <LabSectionHeader eyebrow="02 · Verify the record" title="This is what the workspace will remember" description="Read the manifest once more. Precise context now means better analysis later." />
+                    <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                      {[
+                        ["Experiment identity", values.name, Beaker],
+                        ["Run date", values.date, CalendarDays],
+                        ["Scientific goal", values.assay_type, Target],
+                        ["Instrument", values.instrument, Microscope],
+                        ["Lifecycle", values.status.replace(/_/g, " "), Orbit],
+                      ].map(([label, value, IconValue], index) => {
+                        const Icon = IconValue as typeof Beaker;
+                        return (
+                          <motion.div key={String(label)} className={`${index === 2 ? "sm:col-span-2" : ""} rounded-2xl border border-border/65 bg-background/35 p-4`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + index * 0.04 }}>
+                            <div className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-wider text-muted-foreground"><Icon className="h-3.5 w-3.5 text-emerald-300" />{String(label)}</div>
+                            <p className="mt-3 text-sm font-medium leading-6 capitalize">{String(value || "Not provided")}</p>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.04] p-4 sm:p-5">
+                      <p className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-wider text-violet-200"><Sparkles className="h-3.5 w-3.5" />Inherited copilot context</p>
+                      <p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{values.notes || "No additional context provided. You can add notes and documents from the living experiment record."}</p>
+                    </div>
+                    <div className="mt-8 flex flex-col-reverse gap-3 border-t border-border/65 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                      <Button type="button" variant="outline" className="gap-2 rounded-xl" onClick={() => setStep(0)} data-feedback="navigate" data-feedback-message="Returning to edit the experiment brief"><ArrowLeft className="h-4 w-4" /> Edit the brief</Button>
+                      <Button type="submit" size="lg" className="gap-2 rounded-xl" disabled={createMutation.isPending} data-feedback="save" data-feedback-message="Saving the experiment into your lab memory">
+                        {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Make this record live
+                      </Button>
+                    </div>
+                  </LabPanel>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </form>
+        </Form>
+      </div>
     </div>
   );
 }

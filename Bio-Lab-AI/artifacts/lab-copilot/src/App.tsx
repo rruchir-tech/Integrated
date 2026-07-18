@@ -3,28 +3,32 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
-import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout/Layout";
-import { Dashboard } from "@/pages/Dashboard";
-import { ExperimentList } from "@/pages/ExperimentList";
-import { ExperimentDetail } from "@/pages/ExperimentDetail";
-import { ExperimentForm } from "@/pages/ExperimentForm";
-import { ExperimentEdit } from "@/pages/ExperimentEdit";
-import { ExperimentCompare } from "@/pages/ExperimentCompare";
-import { DataAnalysisPage } from "@/pages/DataAnalysisPage";
-import { AdminPage } from "@/pages/AdminPage";
 import { LandingPage } from "@/pages/LandingPage";
-import { TemplatesPage } from "@/pages/TemplatesPage";
-import { TasksPage } from "@/pages/TasksPage";
-import { ProjectsPage } from "@/pages/ProjectsPage";
-import { ProjectDetail } from "@/pages/ProjectDetail";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, MotionConfig } from "framer-motion";
 import { CommandPalette } from "@/components/CommandPalette";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DemoUserProvider, ClerkUserProvider } from "@/contexts/UserContext";
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import { isEnabled } from "@/lib/features";
+import { ShieldAlert } from "lucide-react";
+import { AmbientBackdrop } from "@/components/layout/AmbientBackdrop";
+import { InteractionFeedback } from "@/components/motion/InteractionFeedback";
+
+const Dashboard = lazy(() => import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard })));
+const ExperimentList = lazy(() => import("@/pages/ExperimentList").then((module) => ({ default: module.ExperimentList })));
+const ExperimentDetail = lazy(() => import("@/pages/ExperimentDetail").then((module) => ({ default: module.ExperimentDetail })));
+const ExperimentForm = lazy(() => import("@/pages/ExperimentForm").then((module) => ({ default: module.ExperimentForm })));
+const ExperimentEdit = lazy(() => import("@/pages/ExperimentEdit").then((module) => ({ default: module.ExperimentEdit })));
+const ExperimentCompare = lazy(() => import("@/pages/ExperimentCompare").then((module) => ({ default: module.ExperimentCompare })));
+const DataAnalysisPage = lazy(() => import("@/pages/DataAnalysisPage").then((module) => ({ default: module.DataAnalysisPage })));
+const AdminPage = lazy(() => import("@/pages/AdminPage").then((module) => ({ default: module.AdminPage })));
+const TemplatesPage = lazy(() => import("@/pages/TemplatesPage").then((module) => ({ default: module.TemplatesPage })));
+const TasksPage = lazy(() => import("@/pages/TasksPage").then((module) => ({ default: module.TasksPage })));
+const ProjectsPage = lazy(() => import("@/pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
+const ProjectDetail = lazy(() => import("@/pages/ProjectDetail").then((module) => ({ default: module.ProjectDetail })));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 // ── API base URL ─────────────────────────────────────────────────────────────
 // When frontend and API are on different origins (Vercel + Render),
@@ -34,7 +38,11 @@ if (apiUrl) setBaseUrl(apiUrl);
 
 // ── Auth mode ─────────────────────────────────────────────────────────────────
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const DEMO_MODE = !clerkPubKey;
+const DEMO_MODE =
+  import.meta.env.DEV &&
+  !clerkPubKey &&
+  import.meta.env.VITE_ENABLE_DEMO_MODE === "true";
+const AUTH_CONFIG_MISSING = !clerkPubKey && !DEMO_MODE;
 
 // ── API auth token ────────────────────────────────────────────────────────────
 // Cross-origin (Vercel frontend -> Render API) means the Clerk session cookie is
@@ -64,15 +72,52 @@ const queryClient = new QueryClient({
 });
 
 function AnimatedRoute({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.querySelector<HTMLElement>("[data-workspace-scroll]")?.scrollTo(0, 0);
+  }, [location]);
+  const routeKind = location === "/data-analysis"
+    ? "analyze"
+    : location.includes("/new")
+      ? "create"
+      : location.startsWith("/projects")
+        ? "organize"
+        : location.startsWith("/experiments/")
+          ? "inspect"
+          : "overview";
+
+  const arrivals = {
+    analyze: { opacity: 0, y: 4, clipPath: "inset(0 0 88% 0)", filter: "blur(4px)" },
+    create: { opacity: 0, y: 18, scale: 0.975, filter: "blur(6px)" },
+    organize: { opacity: 0, x: 18, scale: 0.992, filter: "blur(5px)" },
+    inspect: { opacity: 0, x: 12, filter: "blur(5px)" },
+    overview: { opacity: 0, y: 12, scale: 0.995, filter: "blur(5px)" },
+  } as const;
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.18 }}
+      className="route-scene"
+      data-route-kind={routeKind}
+      initial={arrivals[routeKind]}
+      animate={{ opacity: 1, x: 0, y: 0, scale: 1, clipPath: "inset(0 0 0% 0)", filter: "blur(0px)" }}
+      exit={{ opacity: 0, y: -8, scale: 0.997, filter: "blur(3px)" }}
+      transition={{ duration: routeKind === "analyze" ? 0.62 : 0.46, ease: [0.16, 1, 0.3, 1] }}
     >
+      <span className="route-arrival-signal" aria-hidden="true" />
       {children}
     </motion.div>
+  );
+}
+
+function RouteLoading() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center" role="status" aria-label="Loading workspace">
+      <div className="relative flex h-12 w-12 items-center justify-center">
+        <motion.span className="absolute inset-0 rounded-full border border-primary/25" animate={{ scale: [0.75, 1.2], opacity: [0.8, 0] }} transition={{ duration: 1.5, repeat: Infinity }} />
+        <motion.span className="h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_24px_hsl(var(--primary)/.7)]" animate={{ scale: [0.85, 1.12, 0.85] }} transition={{ duration: 1.2, repeat: Infinity }} />
+      </div>
+    </div>
   );
 }
 
@@ -113,7 +158,7 @@ function AppRoutes({ isAdmin }: { isAdmin: boolean }) {
   return (
     <>
       <ShortcutHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <Switch>
+      <Suspense fallback={<RouteLoading />}><Switch>
         <Route path="/" component={() => <Redirect to="/dashboard" />} />
         <Route path="/landing"><LandingPage /></Route>
         <Route path="/dashboard">
@@ -163,7 +208,7 @@ function AppRoutes({ isAdmin }: { isAdmin: boolean }) {
             : <Redirect to="/dashboard" />}
         </Route>
         <Route component={NotFound} />
-      </Switch>
+      </Switch></Suspense>
     </>
   );
 }
@@ -177,13 +222,37 @@ function DemoApp() {
           <QueryClientProvider client={queryClient}>
             <DemoUserProvider>
               <CommandPalette />
-              <AppRoutes isAdmin={true} />
+              <AppRoutes isAdmin={import.meta.env.VITE_ENABLE_DEMO_ADMIN === "true"} />
             </DemoUserProvider>
           </QueryClientProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
     </ThemeProvider>
+  );
+}
+
+function AuthConfigurationError() {
+  return (
+    <div className="dark relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-background px-5 text-foreground">
+      <AmbientBackdrop intensity="hero" />
+      <motion.div
+        initial={{ opacity: 0, y: 18, filter: "blur(6px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        className="surface-panel premium-ring relative z-10 max-w-lg rounded-2xl p-8 text-center"
+      >
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-300/10 text-amber-200">
+          <ShieldAlert className="h-5 w-5" />
+        </div>
+        <h1 className="mt-5 text-2xl font-semibold">Authentication needs configuration</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          This deployment is missing its Clerk publishable key. Bioalyzer will not fall back to an unauthenticated shared workspace.
+        </p>
+        <p className="mt-5 rounded-lg border border-border/70 bg-background/45 p-3 font-mono text-xs text-muted-foreground">
+          Set VITE_CLERK_PUBLISHABLE_KEY and rebuild the frontend.
+        </p>
+      </motion.div>
+    </div>
   );
 }
 
@@ -276,7 +345,7 @@ function ClerkAppRoutes() {
   return (
     <>
       <ShortcutHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <Switch>
+      <Suspense fallback={<RouteLoading />}><Switch>
         <Route path="/" component={HomeRedirect} />
         <Route path="/sign-in/*?" component={SignInPage} />
         <Route path="/sign-up/*?" component={SignUpPage} />
@@ -346,7 +415,7 @@ function ClerkAppRoutes() {
             : <Redirect to="/dashboard" />}
         </Route>
         <Route component={NotFound} />
-      </Switch>
+      </Switch></Suspense>
     </>
   );
 }
@@ -382,17 +451,25 @@ function ClerkApp() {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 function App() {
-  if (DEMO_MODE) return <DemoApp />;
-
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <TooltipProvider>
-        <WouterRouter base={basePath}>
-          <ClerkApp />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </ThemeProvider>
+    <MotionConfig reducedMotion="user">
+      <InteractionFeedback>
+        {AUTH_CONFIG_MISSING ? (
+          <AuthConfigurationError />
+        ) : DEMO_MODE ? (
+          <DemoApp />
+        ) : (
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+            <TooltipProvider>
+              <WouterRouter base={basePath}>
+                <ClerkApp />
+              </WouterRouter>
+              <Toaster />
+            </TooltipProvider>
+          </ThemeProvider>
+        )}
+      </InteractionFeedback>
+    </MotionConfig>
   );
 }
 

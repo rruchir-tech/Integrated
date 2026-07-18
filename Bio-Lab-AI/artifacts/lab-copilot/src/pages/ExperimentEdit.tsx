@@ -30,8 +30,9 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, FlaskConical, Save } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { LabConversation, LabPageHeader } from "@/components/lab/LivingLab";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -126,20 +127,28 @@ export function ExperimentEdit() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto py-6">
-      <div className="mb-6">
-        <button
-          onClick={() => setLocation(`/experiments/${expId}`)}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to experiment
-        </button>
-        <h1 className="text-3xl font-bold tracking-tight">Edit Experiment</h1>
-        <p className="text-muted-foreground mt-1">Update metadata and status for this experiment run.</p>
-      </div>
+    <div className="lab-page space-y-7 pb-12" data-accent="violet">
+      <LabPageHeader
+        eyebrow="Record editor"
+        title="Refine the scientific memory."
+        description={`You are editing ${experiment.name}. Change the metadata or experimental context here; the evidence already attached to the record remains protected.`}
+        icon={FlaskConical}
+        accent="violet"
+        status={form.formState.isDirty ? "Unsaved changes" : "Record synchronized"}
+        actions={
+          <Button variant="outline" className="gap-2" onClick={() => setLocation(`/experiments/${expId}`)}>
+            <ArrowLeft className="h-4 w-4" /> Back to record
+          </Button>
+        }
+      />
 
-      <Card>
+      <LabConversation accent="violet">
+        {form.formState.isDirty
+          ? "I can see this record has changed. Review the context carefully, then save to propagate the updated meaning across the experiment workspace."
+          : "The record matches its saved state. I’ll flag this surface the moment you change the name, stage, instrument, or scientific context."}
+      </LabConversation>
+
+      <Card className="lab-panel mx-auto max-w-4xl overflow-hidden rounded-[1.8rem] border-primary/20">
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -256,7 +265,9 @@ export function ExperimentEdit() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+                <p className="text-xs leading-5 text-muted-foreground">Saving updates the record context; uploaded evidence is never replaced here.</p>
+                <div className="flex gap-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -266,8 +277,10 @@ export function ExperimentEdit() {
                 </Button>
                 <Button type="submit" disabled={updateMutation.isPending}>
                   {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {!updateMutation.isPending && <Save className="mr-2 h-4 w-4" />}
                   Save Changes
                 </Button>
+                </div>
               </div>
             </form>
           </Form>

@@ -15,9 +15,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 import {
-  BrainCircuit, Calendar, FlaskConical, Microscope, FileText,
+  BrainCircuit, FlaskConical, FileText,
   CheckCircle2, AlertTriangle, Pencil, MessageSquare, CheckSquare, FileDown,
-  Download, Image, Loader2,
+  Download, Image, Loader2, Activity, Waves,
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { CopilotChat } from "@/components/chat/CopilotChat";
@@ -37,6 +37,7 @@ import { computeControlMetrics, ROLE_COLOR, ROLE_LABEL, ROLE_SHORT, type WellRol
 import { DoseResponseCard } from "@/components/DoseResponseCard";
 import { isEnabled } from "@/lib/features";
 import { apiFetch } from "@/lib/apiFetch";
+import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader, type LabAccent } from "@/components/lab/LivingLab";
 import {
   Select,
   SelectContent,
@@ -334,28 +335,25 @@ export function ExperimentDetail() {
     ...(isEnabled("comments") ? [{ key: "comments" as TabKey, label: "Comments", icon: MessageSquare }] : []),
   ];
 
+  const recordAccent: LabAccent =
+    experiment.status === "success"
+      ? "emerald"
+      : experiment.status === "running"
+        ? "amber"
+        : experiment.status === "failed"
+          ? "rose"
+          : "violet";
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 border-b pb-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-primary break-words">{experiment.name}</h1>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground font-mono">
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-4 w-4" />
-              {format(parseISO(experiment.date), "MMMM d, yyyy")}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <FlaskConical className="h-4 w-4" />
-              {experiment.assay_type}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Microscope className="h-4 w-4" />
-              {experiment.instrument}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:flex-shrink-0">
+    <div className="lab-page space-y-7 pb-12" data-accent={recordAccent}>
+      <LabPageHeader
+        eyebrow="Living experiment record"
+        title={experiment.name}
+        description={`${format(parseISO(experiment.date), "MMMM d, yyyy")} · ${experiment.assay_type} · ${experiment.instrument}. Every protocol decision, result, conversation, and next action stays connected here.`}
+        icon={FlaskConical}
+        accent={recordAccent}
+        status={rawData ? "Evidence attached" : "Awaiting evidence"}
+        actions={<>
           <StatusBadge status={experiment.status} />
           <Select
             value={experiment.status}
@@ -363,7 +361,12 @@ export function ExperimentDetail() {
               updateMutation.mutate({ id: expId, data: { status: v as UpdateExperimentMutationBody["status"] } })
             }
           >
-            <SelectTrigger className="h-9 w-[130px] text-xs" title="Experiment stage">
+            <SelectTrigger
+              className="h-9 w-[130px] text-xs"
+              title="Experiment stage"
+              data-feedback="save"
+              data-feedback-message="Updating the experiment stage"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -375,7 +378,7 @@ export function ExperimentDetail() {
               )}
             </SelectContent>
           </Select>
-          <Link href={`/experiments/${expId}/edit`}>
+          <Link href={`/experiments/${expId}/edit`} data-feedback="navigate" data-feedback-message="Opening this experiment for editing">
             <MotionButton variant="outline" className="gap-2" whileTap={{ scale: 0.97 }}>
               <Pencil className="h-4 w-4" />
               Edit
@@ -386,6 +389,8 @@ export function ExperimentDetail() {
             className="gap-2"
             onClick={() => printExperimentReport({ experiment, rawData, suggestions })}
             whileTap={{ scale: 0.97 }}
+            data-feedback="export"
+            data-feedback-message="Preparing a traceable experiment report"
           >
             <FileDown className="h-4 w-4" />
             Export PDF
@@ -395,6 +400,8 @@ export function ExperimentDetail() {
             disabled={analyzeMutation.isPending}
             className="gap-2 relative overflow-hidden"
             whileTap={{ scale: 0.97 }}
+            data-feedback="analyze"
+            data-feedback-message="Bioalyzing this experiment in context"
           >
             {analyzeMutation.isPending && (
               <motion.div
@@ -406,16 +413,51 @@ export function ExperimentDetail() {
             <BrainCircuit className={`h-4 w-4 ${analyzeMutation.isPending ? "animate-pulse" : ""}`} />
             {analyzeMutation.isPending ? "Bioalyzing…" : "Bioalyze"}
           </MotionButton>
-        </div>
-      </div>
+        </>}
+        aside={
+          <div className="relative flex h-[190px] w-[190px] items-center justify-center" aria-hidden="true">
+            <motion.span
+              className="absolute inset-2 rounded-full border border-[var(--lab-accent)]/25"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
+            />
+            <motion.span
+              className="absolute inset-8 rounded-full border border-dashed border-foreground/15"
+              animate={{ rotate: -360 }}
+              transition={{ duration: 16, repeat: Infinity, ease: "linear" }}
+            />
+            <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] border border-[var(--lab-accent)]/30 bg-[var(--lab-accent-soft)] shadow-[0_0_50px_var(--lab-accent-soft)]">
+              {rawData ? <Waves className="h-9 w-9 text-[var(--lab-accent)]" /> : <FlaskConical className="h-9 w-9 text-[var(--lab-accent)]" />}
+              <span className="absolute -bottom-7 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                {rawData ? `${scorableWells.length} signals` : "design state"}
+              </span>
+            </div>
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <LabConversation accent={recordAccent}>
+        {rawData
+          ? experiment.ai_summary
+            ? "The record has evidence and an analysis. I’m keeping the plate, quality signals, recommendations, and discussion synchronized below."
+            : "The evidence is attached. Define any missing controls, inspect the quality signals, then ask me to Bioalyze when you are ready."
+          : experiment.status === "designing"
+            ? "This record is still being designed. Shape the protocol and context first; I’ll wait for you before interpreting any results."
+            : "The protocol is ready for evidence. Attach the instrument output to turn this record into a live analysis workspace."}
+      </LabConversation>
+
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-[minmax(0,1fr)_370px]">
         {/* Main column */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="min-w-0 space-y-7">
+          <LabSectionHeader
+            eyebrow="Experiment timeline"
+            title="One record, no lost context."
+            description="The design, evidence, quantitative readout, and AI interpretation unfold in the order the science actually happens."
+          />
           <AnimatePresence>
             {experiment.notes && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
+              <motion.div key="context" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                <Card className="lab-panel rounded-[1.6rem] border-[var(--lab-accent)]/20">
                   <CardHeader className="py-4">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <FileText className="h-5 w-5" />
@@ -430,7 +472,7 @@ export function ExperimentDetail() {
             )}
 
             {isEnabled("protocolDesigner") && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.12 }}>
+              <motion.div key="protocol" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.12 }}>
                 <ProtocolCard
                   experimentId={expId}
                   protocolJson={experiment.protocol_json ?? null}
@@ -442,7 +484,7 @@ export function ExperimentDetail() {
             {/* Data upload is de-emphasized during design — it only appears once the
                 experiment has moved past the "designing" stage. */}
             {!experiment.raw_data_json && experiment.status !== "designing" && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}>
+              <motion.div key="attach-data" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }}>
                 <AttachDataCard
                   experimentId={expId}
                   onAttached={() => queryClient.invalidateQueries({ queryKey: getGetExperimentQueryKey(expId) })}
@@ -451,8 +493,8 @@ export function ExperimentDetail() {
             )}
 
             {rawData && isPlate96 && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
+              <motion.div key="plate-heatmap" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+                <Card className="lab-panel overflow-hidden rounded-[1.6rem] border-[var(--lab-accent)]/20">
                   <CardHeader className="py-4 border-b">
                     <div className="flex items-center justify-between">
                       <div>
@@ -676,7 +718,7 @@ export function ExperimentDetail() {
             )}
 
             {rawData && isPlate96 && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.25 }}>
+              <motion.div key="dose-response" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.25 }}>
                 <DoseResponseCard
                   expId={expId}
                   wells={rawData.wells}
@@ -687,8 +729,8 @@ export function ExperimentDetail() {
             )}
 
             {rawData && !isPlate96 && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
+              <motion.div key="generic-data" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+                <Card className="lab-panel rounded-[1.6rem] border-[var(--lab-accent)]/20">
                   <CardHeader className="py-4 border-b">
                     <CardTitle className="text-lg">Uploaded Data Summary</CardTitle>
                     {experiment.file_name && (
@@ -722,8 +764,8 @@ export function ExperimentDetail() {
             )}
 
             {experiment.raw_data_json && !rawData && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>
-                <Card className="border-yellow-500/30 bg-yellow-500/5">
+              <motion.div key="unreadable-data" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>
+                <Card className="lab-panel rounded-[1.6rem] border-yellow-500/30 bg-yellow-500/5">
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-3">
                       <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
@@ -740,8 +782,8 @@ export function ExperimentDetail() {
             )}
 
             {experiment.ai_summary && (
-              <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-                <Card className="border-primary/30 bg-primary/5">
+              <motion.div key="ai-summary" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
+                <Card className="lab-panel overflow-hidden rounded-[1.6rem] border-primary/30 bg-primary/5">
                   <CardHeader className="py-4 border-b border-primary/20">
                     <CardTitle className="text-lg flex items-center gap-2 text-primary">
                       <BrainCircuit className="h-5 w-5" />
@@ -761,14 +803,15 @@ export function ExperimentDetail() {
           </AnimatePresence>
 
           <motion.div className="space-y-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-            <h3 className="text-xl font-bold tracking-tight border-b pb-2 flex items-center gap-2">
-              <BrainCircuit className="h-6 w-6 text-primary" />
-              AI Copilot
-            </h3>
+            <LabSectionHeader
+              eyebrow="Conversation layer"
+              title="Think beside your copilot."
+              description="Ask about the protocol, interrogate the evidence, or turn a recommendation into the next experiment."
+            />
             {experiment.conversation_id ? (
               <CopilotChat conversationId={experiment.conversation_id} />
             ) : (
-              <Card className="border-dashed bg-muted/10 hover:bg-muted/20 transition-colors">
+              <Card className="lab-panel rounded-[1.6rem] border-dashed bg-muted/10 hover:bg-muted/20 transition-colors">
                 <CardContent className="flex flex-col items-center justify-center p-8 text-center h-48">
                   <BrainCircuit className="h-12 w-12 text-primary/50 mb-4" />
                   <p className="text-muted-foreground font-medium font-mono">No active conversation</p>
@@ -792,16 +835,24 @@ export function ExperimentDetail() {
         </div>
 
         {/* Side panel with tabs */}
-        <motion.div className="space-y-4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+        <motion.div className="space-y-4 xl:sticky xl:top-24 xl:self-start" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+          <LabPanel accent={recordAccent} className="p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[var(--lab-accent)]">Decision rail</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-[-0.04em]">What happens next</h2>
+            </div>
+            <Activity className="h-5 w-5 text-[var(--lab-accent)]" />
+          </div>
           {/* Tab bar */}
-          <div className="flex border rounded-lg overflow-hidden">
+          <div className="flex overflow-hidden rounded-xl border border-border/60 bg-background/35 p-1">
             {SIDE_TABS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 text-xs font-medium transition-colors ${
                   activeTab === key
-                    ? "bg-primary text-primary-foreground"
+                    ? "rounded-lg bg-[var(--lab-accent)] text-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 }`}
               >
@@ -820,7 +871,7 @@ export function ExperimentDetail() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <Card className="hover:border-l-2 hover:border-l-primary transition-all">
+                <Card className="mt-4 border-0 bg-transparent shadow-none">
                   <CardHeader className="py-4 border-b">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <AlertTriangle className="h-5 w-5 text-primary" />
@@ -864,6 +915,7 @@ export function ExperimentDetail() {
               </motion.div>
             )}
           </AnimatePresence>
+          </LabPanel>
         </motion.div>
       </div>
     </div>

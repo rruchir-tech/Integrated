@@ -25,6 +25,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ProjectChat } from "@/components/chat/ProjectChat";
+import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader } from "@/components/lab/LivingLab";
 
 interface ExperimentRef {
   id: number;
@@ -182,25 +183,18 @@ export function ProjectDetail() {
   const assignable = (allExperiments ?? []).filter((e) => !inProjectIds.has(e.id));
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
-      <Link href="/projects" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="h-4 w-4" /> Projects
-      </Link>
-
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 border-b pb-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-3 text-primary">
-            <FolderKanban className="h-7 w-7 flex-shrink-0" />
-            <span className="break-words">{project.name}</span>
-          </h1>
-          {project.goal ? (
-            <p className="text-sm text-muted-foreground mt-3 whitespace-pre-wrap max-w-2xl">{project.goal}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground/60 italic mt-3">No goal set yet — add one so the AI knows what this project is about.</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 lg:flex-shrink-0">
+    <div className="lab-page space-y-7 pb-12" data-accent="violet">
+      <LabPageHeader
+        eyebrow="Project mission control"
+        title={project.name}
+        description={project.goal ?? "This constellation needs a clear goal. Add one so every experiment and AI synthesis can point toward the same scientific question."}
+        icon={FolderKanban}
+        accent="violet"
+        status={`${project.experiments.length} connected experiment${project.experiments.length === 1 ? "" : "s"}`}
+        actions={<>
+          <Link href="/projects">
+            <Button variant="ghost" className="gap-2"><ArrowLeft className="h-4 w-4" /> All projects</Button>
+          </Link>
           <Button
             variant="outline"
             className="gap-2"
@@ -211,11 +205,35 @@ export function ProjectDetail() {
           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="h-4 w-4" />
           </Button>
-        </div>
-      </div>
+        </>}
+        aside={
+          <div className="relative grid h-48 w-48 place-items-center" aria-hidden="true">
+            {[0, 1, 2].map((ring) => (
+              <motion.span
+                key={ring}
+                className="absolute rounded-full border border-primary/20"
+                style={{ inset: 12 + ring * 22 }}
+                animate={{ rotate: ring % 2 ? -360 : 360 }}
+                transition={{ duration: 18 + ring * 6, repeat: Infinity, ease: "linear" }}
+              />
+            ))}
+            <FolderKanban className="h-10 w-10 text-primary" />
+            <span className="absolute left-3 top-1/2 h-2 w-2 rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary))]" />
+            <span className="absolute right-8 top-8 h-2 w-2 rounded-full bg-emerald-400" />
+          </div>
+        }
+      />
+
+      <LabConversation accent="violet">
+        {project.ai_summary
+          ? "I have a cross-experiment synthesis for this project. As the evidence changes, re-run it to keep the project’s working theory current."
+          : project.experiments.length
+            ? "The experiments are connected. I’m ready to synthesize what is established, what conflicts, and which next run has the highest information value."
+            : "This mission has a goal but no evidence trail yet. Connect the first experiment below and I’ll start building the project memory."}
+      </LabConversation>
 
       {/* Project synthesis */}
-      <Card>
+      <Card className="lab-panel overflow-hidden rounded-[1.8rem] border-primary/20">
         <CardHeader className="py-4 border-b">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -250,8 +268,8 @@ export function ProjectDetail() {
       </Card>
 
       {/* Add experiment */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-muted-foreground">Add experiment:</span>
+      <LabPanel accent="violet" className="flex flex-wrap items-center gap-3 p-4">
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.17em] text-primary">Connect evidence</span>
         <Select value={addExpId} onValueChange={setAddExpId}>
           <SelectTrigger className="w-72 h-9">
             <SelectValue placeholder={assignable.length ? "Choose an experiment…" : "No ungrouped experiments"} />
@@ -271,11 +289,11 @@ export function ProjectDetail() {
           {assignMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           Add
         </Button>
-      </div>
+      </LabPanel>
 
       {/* Experiments in this project */}
       {project.experiments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground border border-dashed rounded-xl">
+        <div className="lab-panel flex flex-col items-center justify-center rounded-[1.8rem] border-dashed py-16 text-center text-muted-foreground">
           <FlaskConical className="h-10 w-10 opacity-30 mb-3" />
           <p className="text-sm">No experiments in this project yet. Add one above.</p>
         </div>
@@ -283,7 +301,7 @@ export function ProjectDetail() {
         <div className="grid gap-3">
           {project.experiments.map((e, idx) => (
             <motion.div key={e.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.04 }}>
-              <Card className="hover:border-l-2 hover:border-l-primary transition-all">
+              <Card className="lab-panel rounded-2xl transition-all hover:-translate-y-0.5 hover:border-primary/45">
                 <CardHeader className="py-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -317,7 +335,8 @@ export function ProjectDetail() {
       )}
 
       {/* Context & notes */}
-      <div className="space-y-3">
+      <div className="space-y-4 pt-2">
+        <LabSectionHeader eyebrow="Context fabric" title="Give the project a memory." description="Notebook entries, protocols, and observations stay available to the project copilot alongside the experimental record." />
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
             <FileText className="h-4 w-4" /> Context &amp; notes

@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { LabConversation, LabPageHeader } from "@/components/lab/LivingLab";
 
 interface Template {
   id: number;
@@ -182,22 +183,27 @@ export function TemplatesPage() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <BookTemplate className="h-8 w-8 text-primary" />
-            Experiment Templates
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Reusable templates that auto-populate new experiments with standard metadata.
-          </p>
-        </div>
+    <div className="lab-page space-y-7 pb-12" data-accent="emerald">
+      <LabPageHeader
+        eyebrow="Protocol pattern library"
+        title="Make rigor reusable."
+        description="Capture the setup knowledge your lab repeats—instrument, assay, controls, context, and AI guidance—then begin every new record from a stronger baseline."
+        icon={BookTemplate}
+        accent="emerald"
+        status={`${templates?.length ?? 0} reusable pattern${templates?.length === 1 ? "" : "s"}`}
+        actions={
         <Button className="gap-2" onClick={openCreate}>
           <Plus className="h-4 w-4" />
           New Template
         </Button>
-      </div>
+        }
+      />
+
+      <LabConversation accent="emerald">
+        {templates?.length
+          ? `Your lab has ${templates.length} starting pattern${templates.length === 1 ? "" : "s"}. I’ll carry their control expectations and analysis hints into every experiment that uses them.`
+          : "Your protocol memory is empty. Capture one trusted starting pattern and I’ll help every future experiment begin with less retyping and more context."}
+      </LabConversation>
 
       {isLoading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -209,7 +215,7 @@ export function TemplatesPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center justify-center py-24 text-center"
+          className="lab-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border-dashed px-6 py-24 text-center"
         >
           <BookTemplate className="h-16 w-16 text-primary/30 mb-4" />
           <h3 className="text-xl font-semibold mb-2">No templates yet</h3>
@@ -232,7 +238,7 @@ export function TemplatesPage() {
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ delay: idx * 0.05 }}
               >
-                <Card className="h-full hover:border-l-2 hover:border-l-primary transition-all group flex flex-col">
+                <Card className="lab-panel group flex h-full flex-col rounded-[1.6rem] transition-all hover:-translate-y-1 hover:border-emerald-400/40 hover:shadow-xl">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">

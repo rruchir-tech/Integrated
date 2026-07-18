@@ -78,6 +78,18 @@ function resolveUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
+function isTrustedAuthTarget(input: RequestInfo | URL): boolean {
+  const url = resolveUrl(input);
+  if (url.startsWith("/")) return true;
+  if (!_baseUrl) return false;
+
+  try {
+    return new URL(url).origin === new URL(_baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
   const headers = new Headers();
 
@@ -351,7 +363,7 @@ export async function customFetch<T = unknown>(
 
   // Attach bearer token when an auth getter is configured and no
   // Authorization header has been explicitly provided.
-  if (_authTokenGetter && !headers.has("authorization")) {
+  if (_authTokenGetter && !headers.has("authorization") && isTrustedAuthTarget(input)) {
     const token = await _authTokenGetter();
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
