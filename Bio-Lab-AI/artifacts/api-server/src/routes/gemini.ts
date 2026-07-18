@@ -300,6 +300,20 @@ router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res
         : `\n\n${assayGuidanceBlock(`${exp.assay_type} ${exp.notes ?? ""}`)}${PROTOCOL_INTERVIEW_INSTRUCTION}`;
     }
     systemInstruction += CHAT_TONE_INSTRUCTION;
+    // The chat must see the uploaded plate data itself, not just an AI-generated
+    // report — the scientist can (and does) ask about the data the moment it's
+    // uploaded, before ever clicking "Bioalyze". Without this, the chat only
+    // knows about data_analysis_report/ai_summary, which don't exist until a
+    // report has been explicitly generated — a real blind spot, not a design choice.
+    let rawDataContext = "";
+    if (exp?.raw_data_json) {
+      try {
+        const parsed = JSON.parse(exp.raw_data_json);
+        rawDataContext = `\n\nUPLOADED PLATE/EXPERIMENT DATA for this experiment (parsed from the raw upload — use this directly, including specific well IDs and values, even if no report has been generated yet):\n${JSON.stringify(parsed, null, 2).slice(0, 6000)}`;
+      } catch {
+        // raw_data_json failed to parse — omit rather than send garbage to the model.
+      }
+    }
     // The full Data Analysis report (if one has been generated) is specific to
     // THIS experiment, so it's appended only here — not in buildLabHistory's
     // one-line-per-experiment summaries, which would bloat every related
@@ -307,7 +321,7 @@ router.post("/gemini/conversations/:id/messages", aiRateLimiter, async (req, res
     const dataReportContext = exp?.data_analysis_report
       ? `\n\nDETAILED DATA ANALYSIS REPORT for this experiment (already generated — reference it directly rather than re-deriving from raw data when answering):\n${exp.data_analysis_report.slice(0, 6000)}`
       : "";
-    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}${dataReportContext}\n\nSCIENTIST QUESTION: ${content}`;
+    systemInstruction += `\n\nFULL LAB HISTORY:\n${buildLabHistory(allExperiments)}\n\nCURRENT EXPERIMENT: ${exp ? formatExperimentContext(exp) : "None"}${rawDataContext}${dataReportContext}\n\nSCIENTIST QUESTION: ${content}`;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");

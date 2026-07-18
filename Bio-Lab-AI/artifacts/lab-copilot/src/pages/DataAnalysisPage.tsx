@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Link } from "wouter";
 import { apiFetch } from "@/lib/apiFetch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListExperiments, useGetExperiment, getListExperimentsQueryKey, getGetExperimentQueryKey } from "@workspace/api-client-react";
@@ -9,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
@@ -381,10 +383,16 @@ export function DataAnalysisPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   // What the AI should focus on / be aware of — steers the report instead of a
-  // fixed prompt guessing. Optional but prominent; refineNote is a follow-up
-  // note once a report already exists (mirrors the Protocol refine pattern).
+  // fixed prompt guessing. Collected via a pop-up the moment an experiment with
+  // data (and no report yet) is selected, so it can't be missed/skipped by
+  // accident like an easy-to-ignore inline field. refineNote is a smaller
+  // follow-up note once a report already exists (mirrors the Protocol refine pattern).
   const [focusNote, setFocusNote] = useState("");
   const [refineNote, setRefineNote] = useState("");
+  const [showFocusModal, setShowFocusModal] = useState(false);
+  // Tracks which experiment id we've already prompted for (submitted OR skipped),
+  // so re-renders don't keep re-popping the modal for the same selection.
+  const promptedForId = useRef<number | null>(null);
 
   // Compare mode — lives here instead of a separate nav page. Pick a second
   // experiment and stream an AI comparison against the selected one.
@@ -435,6 +443,18 @@ export function DataAnalysisPage() {
     if (selectedExp.data_analysis_report) {
       setReport(selectedExp.data_analysis_report);
       setHasReport(true);
+    }
+  }, [selectedId, selectedExp]);
+
+  // Pop up the "what should the AI focus on" prompt automatically the moment an
+  // experiment with data but no report yet is selected — asking up front, not
+  // guessing, was the whole point; an easy-to-miss inline field defeated that.
+  useEffect(() => {
+    if (!selectedId || !selectedExp) return;
+    if (promptedForId.current === selectedId) return;
+    if (selectedExp.raw_data_json && !selectedExp.data_analysis_report) {
+      promptedForId.current = selectedId;
+      setShowFocusModal(true);
     }
   }, [selectedId, selectedExp]);
 
@@ -654,11 +674,6 @@ export function DataAnalysisPage() {
                         <FlaskConical className="h-4 w-4 text-primary" />
                         96-Well Plate Heatmap
                       </CardTitle>
-                      {Object.keys(wellRoles).length === 0 && (
-                        <CardDescription>
-                          Mark control wells on the experiment page to see them color-coded here and unlock the dose-response fit below.
-                        </CardDescription>
-                      )}
                     </CardHeader>
                     <CardContent>
                       <PlateHeatmap
@@ -671,13 +686,34 @@ export function DataAnalysisPage() {
                   </Card>
                 )}
 
-                {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null && (
-                  <DoseResponseCard
-                    expId={selectedId}
-                    wells={parsedSelectedSummary.wells}
-                    meanPos={controlMetrics.meanPos}
-                    meanNeg={controlMetrics.meanNeg}
-                  />
+                {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
+                  controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null ? (
+                    <DoseResponseCard
+                      expId={selectedId}
+                      wells={parsedSelectedSummary.wells}
+                      meanPos={controlMetrics.meanPos}
+                      meanNeg={controlMetrics.meanNeg}
+                    />
+                  ) : (
+                    <Card className="border-dashed border-primary/30 bg-primary/5">
+                      <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4">
+                        <div className="flex items-center gap-3">
+                          <TrendingUp className="h-5 w-5 text-primary flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium">Dose-response curve needs control wells marked</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Mark positive/negative controls on the experiment page to unlock the IC50/EC50 fit here.
+                            </p>
+                          </div>
+                        </div>
+                        <Link href={`/experiments/${selectedId}`}>
+                          <Button size="sm" variant="outline" className="gap-1.5 whitespace-nowrap">
+                            Mark controls
+                          </Button>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  )
                 )}
               </>
             )}
@@ -718,6 +754,12 @@ export function DataAnalysisPage() {
                           </Button>
                         </>
                       )}
+                      {!isStreaming && (
+                        <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          {focusNote.trim() ? "Change focus" : "Set focus"}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         onClick={generateReport}
@@ -745,36 +787,24 @@ export function DataAnalysisPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-4">
-                  {!isStreaming && (
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                          <Sparkles className="h-3.5 w-3.5 text-primary" />
-                          What should the AI focus on or be aware of? (optional)
-                        </label>
-                        <Textarea
-                          value={focusNote}
-                          onChange={(e) => setFocusNote(e.target.value)}
-                          placeholder="e.g. 'I'm worried column 12 looks off' or 'just tell me the IC50, skip the full report'"
-                          rows={2}
-                          className="text-sm bg-background"
-                        />
-                      </div>
-                      {hasReport && (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                            <RotateCcw className="h-3.5 w-3.5 text-primary" />
-                            Anything specific to change in this refinement? (optional)
-                          </label>
-                          <Textarea
-                            value={refineNote}
-                            onChange={(e) => setRefineNote(e.target.value)}
-                            placeholder="e.g. 'go deeper on why the Z-factor dropped' or 're-check for pseudoreplication'"
-                            rows={2}
-                            className="text-sm bg-background"
-                          />
-                        </div>
-                      )}
+                  {!isStreaming && focusNote.trim() && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-primary">Focus: </span>{focusNote}
+                    </div>
+                  )}
+                  {!isStreaming && hasReport && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                        <RotateCcw className="h-3.5 w-3.5 text-primary" />
+                        Anything specific to change in this refinement? (optional)
+                      </label>
+                      <Textarea
+                        value={refineNote}
+                        onChange={(e) => setRefineNote(e.target.value)}
+                        placeholder="e.g. 'go deeper on why the Z-factor dropped' or 're-check for pseudoreplication'"
+                        rows={2}
+                        className="text-sm bg-background"
+                      />
                     </div>
                   )}
 
@@ -895,6 +925,40 @@ export function DataAnalysisPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Dialog open={showFocusModal} onOpenChange={setShowFocusModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              What should the AI focus on?
+            </DialogTitle>
+            <DialogDescription>
+              Tell it what you want checked or be aware of — a specific well, a concern, or just what you need to know. Leave it blank for a general analysis.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            autoFocus
+            value={focusNote}
+            onChange={(e) => setFocusNote(e.target.value)}
+            placeholder="e.g. 'I'm worried column 12 looks off' or 'just tell me the IC50, skip the full report'"
+            rows={3}
+            className="text-sm"
+          />
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setShowFocusModal(false); generateReport(); }}
+            >
+              Skip, just analyze
+            </Button>
+            <Button onClick={() => { setShowFocusModal(false); generateReport(); }} className="gap-1.5">
+              <BrainCircuit className="h-3.5 w-3.5" />
+              Bioalyze this plate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
