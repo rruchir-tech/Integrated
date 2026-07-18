@@ -330,7 +330,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div ref={scrollContainerRef} onScroll={onContentScroll} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div ref={scrollContainerRef} data-workspace-scroll onScroll={onContentScroll} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <main className="relative mx-auto min-h-full w-full max-w-[1480px] px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10 xl:px-10">
             {children}
           </main>

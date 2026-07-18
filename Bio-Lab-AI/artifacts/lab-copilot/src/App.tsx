@@ -73,6 +73,10 @@ const queryClient = new QueryClient({
 
 function AnimatedRoute({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.querySelector<HTMLElement>("[data-workspace-scroll]")?.scrollTo(0, 0);
+  }, [location]);
   const routeKind = location === "/data-analysis"
     ? "analyze"
     : location.includes("/new")

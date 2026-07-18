@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Shield, Users, Database, Ban, Flag, ClipboardList, Activity, Plus, Trash2 } from "lucide-react";
 import { useAppUser } from "@/contexts/UserContext";
+import { LabConversation, LabMetric, LabPageHeader } from "@/components/lab/LivingLab";
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 async function fetchJson(path: string, init?: RequestInit) {
@@ -79,15 +80,19 @@ export function AdminPage() {
   if (me.isLoading) return <Skeleton className="h-96 w-full" />;
   if (!approvedEmail) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="pt-6 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
-          <div>
-            <p className="font-medium text-destructive">Admin access required</p>
-            <p className="text-sm text-muted-foreground">This panel is only available to approved admins.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="lab-page space-y-7 pb-12" data-accent="rose">
+        <LabPageHeader
+          eyebrow="Protected governance boundary"
+          title="This door is intentionally closed."
+          description="Site-wide account controls are isolated from the scientific workspace and are only visible to explicitly approved administrators."
+          icon={Shield}
+          accent="rose"
+          status="Authorization required"
+        />
+        <LabConversation label="Security boundary" accent="rose">
+          Your current account is not on the approved administrator list. No governance data has been exposed.
+        </LabConversation>
+      </div>
     );
   }
 
@@ -111,30 +116,32 @@ export function AdminPage() {
   const moderation = data.moderation_summary ?? { flagged_accounts: 0, pending_reviews: 0, high_priority_alerts: 0 };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex items-center gap-3 border-b pb-5">
-        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-          <Shield className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Site-wide stats, approved admins, and account controls.</p>
-        </div>
-      </div>
+    <div className="lab-page space-y-7 pb-12" data-accent="rose">
+      <LabPageHeader
+        eyebrow="Governance console"
+        title="Protect the scientific workspace."
+        description="Observe safe system-level counts, maintain the explicit administrator boundary, and take deliberate account actions from one controlled surface."
+        icon={Shield}
+        accent="rose"
+        status="Authorized session"
+      />
+
+      <LabConversation label="Governance monitor" accent="rose">
+        {moderation.high_priority_alerts
+          ? `${moderation.high_priority_alerts} high-priority alert${moderation.high_priority_alerts === 1 ? " needs" : "s need"} review. Counts are intentionally summarized until a deliberate action is taken.`
+          : "The governance surface is calm. No high-priority alerts are currently recorded, and sensitive details remain outside this summary view."}
+      </LabConversation>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><Users className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{data.total_experiments}</div><div className="text-sm text-muted-foreground">Total experiments</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><Database className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{data.approved_admins?.length ?? 0}</div><div className="text-sm text-muted-foreground">Approved admins</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><Ban className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{data.recent_experiments?.length ?? 0}</div><div className="text-sm text-muted-foreground">Recent experiments</div></CardContent></Card>
+        <LabMetric label="Experiments" value={data.total_experiments} detail="Total scientific records" icon={Users} accent="violet" index={0} />
+        <LabMetric label="Administrators" value={data.approved_admins?.length ?? 0} detail="Explicitly approved" icon={Database} accent="cyan" index={1} />
+        <LabMetric label="Recent records" value={data.recent_experiments?.length ?? 0} detail="Current activity window" icon={Activity} accent="emerald" index={2} />
+        <LabMetric label="Flagged" value={moderation.flagged_accounts} detail="Accounts recorded" icon={Flag} accent="rose" index={3} />
+        <LabMetric label="Pending" value={moderation.pending_reviews} detail="Reviews awaiting action" icon={ClipboardList} accent="amber" index={4} />
+        <LabMetric label="Priority alerts" value={moderation.high_priority_alerts} detail="Requires attention" icon={Ban} accent="rose" index={5} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><Flag className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{moderation.flagged_accounts}</div><div className="text-sm text-muted-foreground">Flagged accounts</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><ClipboardList className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{moderation.pending_reviews}</div><div className="text-sm text-muted-foreground">Pending reviews</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><Activity className="h-5 w-5 text-primary mb-2" /><div className="text-2xl font-bold">{moderation.high_priority_alerts}</div><div className="text-sm text-muted-foreground">High priority alerts</div></CardContent></Card>
-      </div>
-
-      <Card>
+      <Card className="lab-panel rounded-[1.7rem]">
         <CardHeader>
           <CardTitle>Approved Admins</CardTitle>
           <CardDescription>These email addresses are allowed into the admin panel.</CardDescription>
@@ -165,7 +172,7 @@ export function AdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="lab-panel rounded-[1.7rem]">
         <CardHeader>
           <CardTitle>Moderation Summary</CardTitle>
           <CardDescription>Safe summary counts only; no sensitive accusations or unverified claims.</CardDescription>
@@ -175,7 +182,7 @@ export function AdminPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="lab-panel rounded-[1.7rem] border-destructive/20">
         <CardHeader>
           <CardTitle>Suspend Account</CardTitle>
           <CardDescription>Enter an email to flag an account for suspension.</CardDescription>

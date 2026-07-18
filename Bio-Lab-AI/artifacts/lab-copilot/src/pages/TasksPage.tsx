@@ -30,6 +30,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { format, parseISO } from "date-fns";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
+import { LabConversation, LabMetric, LabPageHeader, LabPanel } from "@/components/lab/LivingLab";
 
 interface Task {
   id: number;
@@ -131,18 +132,15 @@ export function TasksPage() {
   const nextStatus: Record<string, string> = { todo: "in_progress", in_progress: "done", done: "todo" };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ClipboardList className="h-8 w-8 text-primary" />
-            Tasks
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Action items and follow-up tasks across all experiments.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="lab-page space-y-7 pb-12" data-accent="amber">
+      <LabPageHeader
+        eyebrow="Lab execution board"
+        title="Turn evidence into motion."
+        description="Every follow-up, owner, deadline, and recommendation lives on a kinetic board built around the experiments that created the work."
+        icon={ClipboardList}
+        accent="amber"
+        status={`${filteredTasks.length} visible action${filteredTasks.length === 1 ? "" : "s"}`}
+        actions={<>
           <Select value={filterExp} onValueChange={setFilterExp}>
             <SelectTrigger className="w-48 h-9 text-sm">
               <SelectValue placeholder="All experiments" />
@@ -158,7 +156,21 @@ export function TasksPage() {
             <Plus className="h-4 w-4" />
             Add Task
           </Button>
-        </div>
+        </>}
+      />
+
+      <LabConversation accent="amber">
+        {byStatus("in_progress").length
+          ? `${byStatus("in_progress").length} action${byStatus("in_progress").length === 1 ? " is" : "s are"} moving right now. Advance a card as the lab progresses; I’ll keep its experiment connection visible.`
+          : filteredTasks.length
+            ? "Nothing is moving yet. Choose the highest-information task and advance it into progress when the lab is ready."
+            : "The execution queue is clear. Add a deliberate task or turn an AI recommendation inside an experiment into the next action."}
+      </LabConversation>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <LabMetric label="Queued" value={byStatus("todo").length} detail="Ready to be claimed" icon={Circle} accent="amber" index={0} />
+        <LabMetric label="In motion" value={byStatus("in_progress").length} detail="Active lab work" icon={Clock} accent="cyan" index={1} />
+        <LabMetric label="Resolved" value={byStatus("done").length} detail="Evidence of progress" icon={CheckCircle2} accent="emerald" index={2} />
       </div>
 
       {isLoading ? (
@@ -170,7 +182,7 @@ export function TasksPage() {
           {STATUS_COLUMNS.map(({ key, label, icon: Icon, color }) => {
             const col = byStatus(key);
             return (
-              <div key={key} className="flex flex-col gap-3">
+              <LabPanel key={key} accent={key === "done" ? "emerald" : key === "in_progress" ? "cyan" : "amber"} className="flex min-h-[330px] flex-col gap-4 p-4">
                 <div className="flex items-center gap-2 px-1">
                   <Icon className={`h-4 w-4 ${color}`} />
                   <span className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{label}</span>
@@ -186,7 +198,7 @@ export function TasksPage() {
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ delay: idx * 0.04 }}
                       >
-                        <Card className="hover:border-primary/40 transition-all group cursor-default">
+                        <Card className="group cursor-default rounded-2xl border-border/55 bg-background/55 transition-all hover:-translate-y-0.5 hover:border-[var(--lab-accent)]/45 hover:shadow-lg">
                           <CardContent className="p-3 space-y-2">
                             <div className="flex items-start gap-2">
                               <button
@@ -237,12 +249,12 @@ export function TasksPage() {
                     ))}
                   </AnimatePresence>
                   {col.length === 0 && (
-                    <div className="border-2 border-dashed border-border rounded-lg h-24 flex items-center justify-center text-xs text-muted-foreground">
-                      No tasks
+                    <div className="flex h-28 items-center justify-center rounded-2xl border border-dashed border-border/70 bg-background/25 px-5 text-center text-xs leading-5 text-muted-foreground">
+                      This lane is quiet. The board will respond when work moves here.
                     </div>
                   )}
                 </div>
-              </div>
+              </LabPanel>
             );
           })}
         </div>

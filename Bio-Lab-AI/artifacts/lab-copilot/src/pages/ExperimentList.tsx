@@ -1,40 +1,70 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
+import { format, parseISO } from "date-fns";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  Beaker,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Dna,
+  Filter,
+  FlaskConical,
+  HelpCircle,
+  LayoutGrid,
+  List,
+  Loader2,
+  Microscope,
+  Pencil,
+  Plus,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useListExperiments, getListExperimentsQueryKey } from "@workspace/api-client-react";
-import { Plus, Search, Filter, Pencil, Eye, CheckCircle2, AlertTriangle, Loader2, HelpCircle, X, Sparkles, Clock, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/ui/StatusBadge";
-import { format, parseISO } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { motion, AnimatePresence } from "framer-motion";
-import { Badge } from "@/components/ui/badge";
+  LabConversation,
+  LabPageHeader,
+  LabPanel,
+  LabSectionHeader,
+  LabTextLink,
+  type LabAccent,
+} from "@/components/lab/LivingLab";
 
-const MotionButton = motion.create(Button);
+type ViewMode = "grid" | "list";
 
 const STATUS_FILTERS = [
-  { value: "all", label: "All", icon: null, color: "" },
-  { value: "designing", label: "Designing", icon: Sparkles, color: "text-violet-400" },
-  { value: "ready", label: "Ready to run", icon: Clock, color: "text-amber-400" },
-  { value: "running", label: "Running", icon: Activity, color: "text-cyan-400" },
-  { value: "success", label: "Success", icon: CheckCircle2, color: "text-emerald-400" },
-  { value: "in_progress", label: "In Progress", icon: Loader2, color: "text-primary" },
-  { value: "failed", label: "Failed", icon: AlertTriangle, color: "text-red-400" },
-  { value: "unknown", label: "Unknown", icon: HelpCircle, color: "text-muted-foreground" },
+  { value: "all", label: "All signals", icon: Dna, accent: "cyan" as LabAccent },
+  { value: "designing", label: "Designing", icon: Sparkles, accent: "violet" as LabAccent },
+  { value: "ready", label: "Ready", icon: Clock3, accent: "amber" as LabAccent },
+  { value: "running", label: "Running", icon: Activity, accent: "cyan" as LabAccent },
+  { value: "success", label: "Success", icon: CheckCircle2, accent: "emerald" as LabAccent },
+  { value: "in_progress", label: "In progress", icon: Loader2, accent: "cyan" as LabAccent },
+  { value: "failed", label: "Failed", icon: AlertTriangle, accent: "rose" as LabAccent },
+  { value: "unknown", label: "Unknown", icon: HelpCircle, accent: "amber" as LabAccent },
 ];
+
+function statusAccent(status: string): LabAccent {
+  if (status === "success") return "emerald";
+  if (status === "failed") return "rose";
+  if (status === "designing") return "violet";
+  if (status === "ready") return "amber";
+  return "cyan";
+}
 
 export function ExperimentList() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [assayFilter, setAssayFilter] = useState<string>("all");
-  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [assayFilter, setAssayFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const listParams = {
     search: search || undefined,
@@ -42,245 +72,272 @@ export function ExperimentList() {
     assay_type: assayFilter !== "all" ? assayFilter : undefined,
   };
 
-  const { data: experiments, isLoading } = useListExperiments(
-    listParams,
-    { query: { queryKey: getListExperimentsQueryKey(listParams) } }
-  );
+  const { data: experiments, isLoading } = useListExperiments(listParams, {
+    query: { queryKey: getListExperimentsQueryKey(listParams) },
+  });
+  const { data: allExperiments } = useListExperiments({}, {
+    query: { queryKey: getListExperimentsQueryKey({}) },
+  });
 
-  // Unfiltered fetch (react-query cached) used only to populate the assay-type
-  // dropdown with every assay the scientist has, regardless of active filter.
-  const { data: allExperiments } = useListExperiments(
-    {},
-    { query: { queryKey: getListExperimentsQueryKey({}) } }
-  );
-  const assayTypes = Array.from(
-    new Set((allExperiments ?? []).map((e) => e.assay_type).filter(Boolean))
-  ).sort();
-
+  const assayTypes = useMemo(() => Array.from(
+    new Set((allExperiments ?? []).map((experiment) => experiment.assay_type).filter(Boolean)),
+  ).sort(), [allExperiments]);
   const hasActiveFilter = Boolean(search) || statusFilter !== "all" || assayFilter !== "all";
+  const runningCount = (allExperiments ?? []).filter((experiment) => ["running", "in_progress"].includes(experiment.status)).length;
+  const successCount = (allExperiments ?? []).filter((experiment) => experiment.status === "success").length;
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setAssayFilter("all");
+  };
 
   return (
-    <div className="space-y-5 flex flex-col h-[calc(100vh-4rem)]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Experiments</h1>
-          <p className="text-sm text-muted-foreground mt-1">Search, filter, and jump back into your active runs.</p>
-        </div>
-        <Link href="/experiments/new" data-feedback="create" data-feedback-message="Opening a fresh experiment record">
-          <MotionButton 
-            whileTap={{ scale: 0.97 }}
-            className=""
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Experiment
-          </MotionButton>
-        </Link>
-      </div>
+    <div className="lab-page">
+      <LabPageHeader
+        eyebrow="Experiment signal archive"
+        title="Every run has a story. Keep the whole trail alive."
+        description="Search the evidence, reopen the context, and move from one experimental decision to the next without reconstructing what happened."
+        icon={Beaker}
+        accent="violet"
+        status={`${allExperiments?.length ?? 0} records indexed`}
+        actions={
+          <Link href="/experiments/new" data-feedback="create" data-feedback-message="Opening a fresh experiment record">
+            <Button size="lg" className="h-11 gap-2 rounded-xl px-5">
+              <Plus className="h-4 w-4" /> Start a new signal <ArrowUpRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        }
+        aside={
+          <div className="grid w-full grid-cols-2 gap-3">
+            {[
+              ["All records", allExperiments?.length ?? 0, "text-violet-300"],
+              ["In motion", runningCount, "text-cyan-300"],
+              ["Successful", successCount, "text-emerald-300"],
+              ["Assay types", assayTypes.length, "text-amber-300"],
+            ].map(([label, value, color]) => (
+              <div key={String(label)} className="lab-panel p-3 text-center" data-accent="violet">
+                <p className={`text-2xl font-semibold tracking-[-0.05em] ${color}`}>{value}</p>
+                <p className="mt-1 font-mono text-[8px] uppercase tracking-wider text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+        }
+      />
 
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <LabConversation accent={hasActiveFilter ? "amber" : "violet"}>
+        {hasActiveFilter
+          ? `${experiments?.length ?? 0} ${experiments?.length === 1 ? "record matches" : "records match"} the signal you described. I’ll keep the filters visible so you know exactly why.`
+          : runningCount
+            ? `${runningCount} active ${runningCount === 1 ? "run is" : "runs are"} still in motion. Open one to keep notes, data, and decisions attached.`
+            : "The archive is listening. Search by question, instrument, assay, or stage and I’ll narrow the trail without losing context."}
+      </LabConversation>
+
+      <LabPanel className="p-4 sm:p-5" accent="violet">
+        <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_auto_auto] xl:items-center">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-300" />
             <Input
-              placeholder="Search experiments..."
-              className="pl-9 bg-background"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by experiment, instrument, or scientific question…"
+              className="h-12 rounded-xl border-border/75 bg-background/45 pl-11 pr-10 text-sm"
               data-feedback="filter"
               data-feedback-message="Listening for an experiment"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Clear search"
                 data-feedback="filter"
                 data-feedback-message="Clearing the experiment search"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <div className="text-xs text-muted-foreground font-mono hidden sm:block">
-            {experiments ? `${experiments.length} result${experiments.length !== 1 ? "s" : ""}` : ""}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {assayTypes.length > 0 && (
+              <Select value={assayFilter} onValueChange={setAssayFilter}>
+                <SelectTrigger className="h-11 w-full rounded-xl bg-background/45 sm:w-[210px]" data-feedback="filter" data-feedback-message="Choosing an assay family">
+                  <Filter className="mr-2 h-3.5 w-3.5 text-violet-300" />
+                  <SelectValue placeholder="All assay types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All assay families</SelectItem>
+                  {assayTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            {hasActiveFilter && (
+              <Button variant="ghost" size="sm" className="h-10 gap-1.5 text-xs" onClick={clearFilters} data-feedback="filter" data-feedback-message="Returning to the complete experiment archive">
+                <X className="h-3.5 w-3.5" /> Reset
+              </Button>
+            )}
+          </div>
+
+          <div className="inline-flex w-fit rounded-xl border border-border/75 bg-background/45 p-1">
+            {([
+              ["grid", LayoutGrid, "Grid"],
+              ["list", List, "List"],
+            ] as const).map(([mode, Icon, label]) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-medium transition ${viewMode === mode ? "bg-violet-300/12 text-violet-200" : "text-muted-foreground hover:text-foreground"}`}
+                aria-label={`${label} view`}
+                data-feedback="filter"
+                data-feedback-message={`Switching to ${label.toLowerCase()} view`}
+              >
+                <Icon className="h-3.5 w-3.5" /><span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
           </div>
         </div>
+      </LabPanel>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {STATUS_FILTERS.map(({ value, label, icon: Icon, color }) => (
-            <motion.button
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {STATUS_FILTERS.map(({ value, label, icon: Icon, accent }) => {
+          const count = value === "all"
+            ? allExperiments?.length ?? 0
+            : (allExperiments ?? []).filter((experiment) => experiment.status === value).length;
+          const active = statusFilter === value;
+          return (
+            <button
               key={value}
               onClick={() => setStatusFilter(value)}
               data-feedback="filter"
               data-feedback-message={`Showing ${label.toLowerCase()} experiments`}
-              whileTap={{ scale: 0.96 }}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all ${
-                statusFilter === value
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted/50 border-border hover:border-primary/50 hover:bg-muted"
-              }`}
+              className={`group flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs transition ${active ? "border-[var(--lab-accent)] bg-[var(--lab-accent-soft)] text-foreground" : "border-border/70 bg-card/40 text-muted-foreground hover:border-border hover:bg-card/70 hover:text-foreground"}`}
+              data-accent={accent}
             >
-              {Icon && <Icon className={`h-3 w-3 ${statusFilter === value ? "" : color}`} />}
-              {label}
-            </motion.button>
-          ))}
+              <Icon className={`h-3.5 w-3.5 ${active ? "text-[var(--lab-accent)]" : ""}`} />
+              <span>{label}</span>
+              <span className="rounded-full border border-border/60 bg-background/35 px-1.5 py-0.5 font-mono text-[8px]">{count}</span>
+            </button>
+          );
+        })}
+      </div>
 
-          {assayTypes.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-              <Select value={assayFilter} onValueChange={setAssayFilter}>
-                <SelectTrigger
-                  className="h-8 w-[190px] text-xs bg-background"
-                  data-feedback="filter"
-                  data-feedback-message="Choosing an assay type"
-                >
-                  <SelectValue placeholder="All assay types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All assay types</SelectItem>
-                  {assayTypes.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+      <LabSectionHeader
+        eyebrow="Indexed evidence"
+        title={hasActiveFilter ? "The matching trail" : "Your experimental memory"}
+        description={`${experiments?.length ?? 0} ${experiments?.length === 1 ? "record" : "records"} in this view`}
+      />
+
+      {isLoading ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-52 rounded-2xl" />)}
         </div>
-      </div>
-
-      <div className="surface-panel flex-1 overflow-auto rounded-2xl border bg-card/75">
-        {isLoading ? (
-          <div className="p-4 space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : !experiments ? (
-          <motion.div
-            className="flex flex-col items-center justify-center h-full p-8 text-center"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="h-16 w-16 rounded-full bg-muted/50 border border-border flex items-center justify-center mb-4">
-              <AlertTriangle className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold">Couldn’t load experiments</h3>
-            <p className="text-muted-foreground text-sm max-w-sm mt-1">
-              Something went wrong fetching your runs. This is usually temporary.
+      ) : !experiments ? (
+        <LabPanel className="flex min-h-[320px] flex-col items-center justify-center p-8 text-center" accent="rose">
+          <AlertTriangle className="h-8 w-8 text-rose-300" />
+          <h3 className="mt-5 text-xl font-semibold">The archive signal dropped.</h3>
+          <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">Your experiments are still safe. Reconnect the API and this index will repopulate automatically.</p>
+        </LabPanel>
+      ) : experiments.length === 0 ? (
+        <LabPanel className="grid min-h-[390px] gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_340px] lg:items-center" accent={hasActiveFilter ? "amber" : "violet"}>
+          <div>
+            <p className="lab-kicker"><span className="lab-kicker-pulse" />{hasActiveFilter ? "No matching signal" : "Archive ready"}</p>
+            <h3 className="mt-5 max-w-xl text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
+              {hasActiveFilter ? "Nothing in the archive speaks that exact language yet." : "Your first experiment will become the beginning of a connected trail."}
+            </h3>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
+              {hasActiveFilter ? "Broaden the filters or clear the search to return to your complete history." : "Create a record for the question, attach the raw signal, and let every next decision inherit the context."}
             </p>
-          </motion.div>
-        ) : experiments.length === 0 ? (
-          hasActiveFilter ? (
-            <motion.div
-              className="flex flex-col items-center justify-center h-full p-8 text-center"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-            >
-              <div className="h-16 w-16 rounded-full bg-muted/50 border border-border flex items-center justify-center mb-4">
-                <Search className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold">No matching experiments</h3>
-              <p className="text-muted-foreground text-sm max-w-sm mt-1">
-                {search ? `No results for "${search}".` : "No experiments match the current filter."}
-              </p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setStatusFilter("all"); setAssayFilter("all"); }}>
-                <X className="h-3.5 w-3.5 mr-1.5" />
-                Clear filters
-              </Button>
-            </motion.div>
-          ) : (
-            <motion.div
-              className="flex flex-col items-center justify-center h-full p-8 text-center"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-            >
-              <div className="h-16 w-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-                <Plus className="h-7 w-7 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold">No experiments yet</h3>
-              <p className="text-muted-foreground text-sm max-w-sm mt-1">
-                Upload a plate reader export or instrument file — Bioalyzer parses, analyzes, and tracks it for you.
-              </p>
-              <Link href="/experiments/new" data-feedback="create" data-feedback-message="Creating your first experiment record">
-                <Button size="sm" className="mt-4">
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Create your first experiment
-                </Button>
-              </Link>
-            </motion.div>
-          )
-        ) : (
-          <div className="divide-y divide-border/50">
-            <AnimatePresence initial={false}>
-              {experiments?.map((exp, index) => (
-                <motion.div
-                  key={exp.id}
-                  layout
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 16 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="relative group"
-                  onMouseEnter={() => setHoveredId(exp.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                >
-                  <Link 
-                    href={`/experiments/${exp.id}`}
-                    data-feedback="navigate"
-                    data-feedback-message={`Opening ${exp.name}`}
-                    className="flex items-center justify-between border-l-2 border-l-transparent p-4 transition-all duration-300 hover:border-l-primary hover:bg-muted/40 group-hover:pl-[18px]"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-semibold text-primary">{exp.name}</div>
-                      <div className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs">{format(parseISO(exp.date), "MMM d, yyyy")}</span>
-                        <span className="text-muted-foreground/40">·</span>
-                        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{exp.assay_type}</span>
-                        <span className="text-muted-foreground/40">·</span>
-                        <span className="font-mono text-xs">{exp.instrument}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 ml-4 flex-shrink-0">
-                      <AnimatePresence>
-                        {hoveredId === exp.id && (
-                          <motion.div
-                            className="flex items-center gap-1"
-                            initial={{ opacity: 0, x: 8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 8 }}
-                            transition={{ duration: 0.15 }}
-                          >
-                            <Link
-                              href={`/experiments/${exp.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              data-feedback="navigate"
-                              data-feedback-message={`Inspecting ${exp.name}`}
-                              className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                              title="View"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Link>
-                            <Link
-                              href={`/experiments/${exp.id}/edit`}
-                              onClick={(e) => e.stopPropagation()}
-                              data-feedback="navigate"
-                              data-feedback-message={`Opening ${exp.name} for editing`}
-                              className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Link>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                      <StatusBadge status={exp.status} />
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {hasActiveFilter ? (
+                <Button variant="outline" onClick={clearFilters}><X className="h-4 w-4" /> Clear the filters</Button>
+              ) : (
+                <Link href="/experiments/new"><Button><Plus className="h-4 w-4" /> Create the first record</Button></Link>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+          <div className="relative hidden aspect-square lg:block" aria-hidden="true">
+            {[0, 1, 2].map((ring) => (
+              <motion.span
+                key={ring}
+                className="absolute rounded-full border border-[var(--lab-accent)]/20"
+                style={{ inset: `${ring * 15}%` }}
+                animate={{ rotate: ring % 2 ? -360 : 360 }}
+                transition={{ duration: 18 + ring * 4, repeat: Infinity, ease: "linear" }}
+              />
+            ))}
+            <span className="absolute inset-[36%] flex items-center justify-center rounded-3xl border border-[var(--lab-accent)]/30 bg-[var(--lab-accent-soft)] text-[var(--lab-accent)]"><FlaskConical className="h-9 w-9" /></span>
+          </div>
+        </LabPanel>
+      ) : viewMode === "grid" ? (
+        <motion.div layout className="grid gap-4 lg:grid-cols-2">
+          <AnimatePresence mode="popLayout">
+            {experiments.map((experiment, index) => {
+              const accent = statusAccent(experiment.status);
+              return (
+                <motion.article
+                  layout
+                  key={experiment.id}
+                  initial={{ opacity: 0, y: 18, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                  transition={{ delay: Math.min(index * 0.04, 0.3), duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <LabPanel className="group h-full p-5 sm:p-6" accent={accent} interactive>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="lab-index-number">{String(index + 1).padStart(2, "0")}</span>
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[color-mix(in_srgb,var(--lab-accent)_24%,transparent)] bg-[var(--lab-accent-soft)] text-[var(--lab-accent)]"><FlaskConical className="h-4.5 w-4.5" /></span>
+                      </div>
+                      <StatusBadge status={experiment.status} />
+                    </div>
+                    <Link href={`/experiments/${experiment.id}`} data-feedback="navigate" data-feedback-message={`Opening ${experiment.name}`}>
+                      <h3 className="mt-6 text-xl font-semibold tracking-[-0.035em] transition-colors group-hover:text-[var(--lab-accent)]">{experiment.name}</h3>
+                    </Link>
+                    <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">
+                      {experiment.assay_type} evidence captured on {experiment.instrument}, with its analysis and decision trail kept in one living record.
+                    </p>
+                    <div className="mt-5 grid grid-cols-3 gap-2">
+                      {[
+                        [CalendarDays, format(parseISO(experiment.date), "MMM d, yyyy")],
+                        [Dna, experiment.assay_type],
+                        [Microscope, experiment.instrument],
+                      ].map(([MetaIcon, value], metaIndex) => {
+                        const Icon = MetaIcon as typeof CalendarDays;
+                        return (
+                          <div key={metaIndex} className="min-w-0 rounded-xl border border-border/60 bg-background/35 p-2.5">
+                            <Icon className="h-3.5 w-3.5 text-[var(--lab-accent)]" />
+                            <p className="mt-2 truncate text-[10px] text-muted-foreground">{String(value)}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-4">
+                      <Link href={`/experiments/${experiment.id}`} data-feedback="navigate" data-feedback-message={`Opening ${experiment.name}`}><LabTextLink>Open living record</LabTextLink></Link>
+                      <Link href={`/experiments/${experiment.id}/edit`} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Edit ${experiment.name}`} data-feedback="navigate" data-feedback-message={`Opening ${experiment.name} for editing`}><Pencil className="h-3.5 w-3.5" /></Link>
+                    </div>
+                  </LabPanel>
+                </motion.article>
+              );
+            })}
+          </AnimatePresence>
+        </motion.div>
+      ) : (
+        <LabPanel className="divide-y divide-border/60" accent="violet">
+          <AnimatePresence mode="popLayout">
+            {experiments.map((experiment, index) => (
+              <motion.div key={experiment.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ delay: Math.min(index * 0.035, 0.25) }} className="group grid items-center gap-4 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:px-5">
+                <span className="lab-index-number">{String(index + 1).padStart(2, "0")}</span>
+                <div className="min-w-0">
+                  <Link href={`/experiments/${experiment.id}`} className="block truncate text-sm font-semibold hover:text-primary" data-feedback="navigate" data-feedback-message={`Opening ${experiment.name}`}>{experiment.name}</Link>
+                  <p className="mt-1 truncate text-[10px] text-muted-foreground">{experiment.assay_type} · {experiment.instrument} · {format(parseISO(experiment.date), "MMM d, yyyy")}</p>
+                </div>
+                <StatusBadge status={experiment.status} />
+                <Link href={`/experiments/${experiment.id}`}><ArrowUpRight className="h-4 w-4 text-muted-foreground transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" /></Link>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </LabPanel>
+      )}
     </div>
   );
 }
