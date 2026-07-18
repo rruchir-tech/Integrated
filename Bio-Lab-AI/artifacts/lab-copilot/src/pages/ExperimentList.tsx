@@ -66,7 +66,7 @@ export function ExperimentList() {
           <h1 className="text-3xl font-bold tracking-tight">Experiments</h1>
           <p className="text-sm text-muted-foreground mt-1">Search, filter, and jump back into your active runs.</p>
         </div>
-        <Link href="/experiments/new">
+        <Link href="/experiments/new" data-feedback="create" data-feedback-message="Opening a fresh experiment record">
           <MotionButton 
             whileTap={{ scale: 0.97 }}
             className=""
@@ -86,11 +86,15 @@ export function ExperimentList() {
               className="pl-9 bg-background"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              data-feedback="filter"
+              data-feedback-message="Listening for an experiment"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
                 className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                data-feedback="filter"
+                data-feedback-message="Clearing the experiment search"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -106,6 +110,8 @@ export function ExperimentList() {
             <motion.button
               key={value}
               onClick={() => setStatusFilter(value)}
+              data-feedback="filter"
+              data-feedback-message={`Showing ${label.toLowerCase()} experiments`}
               whileTap={{ scale: 0.96 }}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all ${
                 statusFilter === value
@@ -122,7 +128,11 @@ export function ExperimentList() {
             <div className="flex items-center gap-2 ml-auto">
               <Filter className="h-3.5 w-3.5 text-muted-foreground" />
               <Select value={assayFilter} onValueChange={setAssayFilter}>
-                <SelectTrigger className="h-8 w-[190px] text-xs bg-background">
+                <SelectTrigger
+                  className="h-8 w-[190px] text-xs bg-background"
+                  data-feedback="filter"
+                  data-feedback-message="Choosing an assay type"
+                >
                   <SelectValue placeholder="All assay types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -137,7 +147,7 @@ export function ExperimentList() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto border rounded-lg bg-card">
+      <div className="surface-panel flex-1 overflow-auto rounded-2xl border bg-card/75">
         {isLoading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -190,7 +200,7 @@ export function ExperimentList() {
               <p className="text-muted-foreground text-sm max-w-sm mt-1">
                 Upload a plate reader export or instrument file — Bioalyzer parses, analyzes, and tracks it for you.
               </p>
-              <Link href="/experiments/new">
+              <Link href="/experiments/new" data-feedback="create" data-feedback-message="Creating your first experiment record">
                 <Button size="sm" className="mt-4">
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
                   Create your first experiment
@@ -215,7 +225,9 @@ export function ExperimentList() {
                 >
                   <Link 
                     href={`/experiments/${exp.id}`}
-                    className="flex items-center justify-between p-4 hover:bg-muted/40 border-l-2 border-l-transparent hover:border-l-primary transition-all"
+                    data-feedback="navigate"
+                    data-feedback-message={`Opening ${exp.name}`}
+                    className="flex items-center justify-between border-l-2 border-l-transparent p-4 transition-all duration-300 hover:border-l-primary hover:bg-muted/40 group-hover:pl-[18px]"
                   >
                     <div className="min-w-0">
                       <div className="font-semibold text-primary">{exp.name}</div>
@@ -240,6 +252,8 @@ export function ExperimentList() {
                             <Link
                               href={`/experiments/${exp.id}`}
                               onClick={(e) => e.stopPropagation()}
+                              data-feedback="navigate"
+                              data-feedback-message={`Inspecting ${exp.name}`}
                               className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
                               title="View"
                             >
@@ -248,6 +262,8 @@ export function ExperimentList() {
                             <Link
                               href={`/experiments/${exp.id}/edit`}
                               onClick={(e) => e.stopPropagation()}
+                              data-feedback="navigate"
+                              data-feedback-message={`Opening ${exp.name} for editing`}
                               className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
                               title="Edit"
                             >

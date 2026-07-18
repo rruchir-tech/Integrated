@@ -144,6 +144,8 @@ export function ExperimentForm() {
                 key={t.id}
                 type="button"
                 onClick={() => applyTemplate(String(t.id))}
+                data-feedback="create"
+                data-feedback-message={`Applying the ${t.name} starting structure`}
                 className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                   selectedTemplateId === String(t.id)
                     ? "bg-primary text-primary-foreground border-primary"
@@ -169,6 +171,8 @@ export function ExperimentForm() {
               <motion.button
                 type="button"
                 onClick={() => idx <= step && setStep(idx)}
+                data-feedback="navigate"
+                data-feedback-message={`Moving to ${label.toLowerCase()}`}
                 className={`flex items-center gap-2 text-sm font-medium transition-colors ${
                   idx === step ? "text-primary" : idx < step ? "text-primary/60 cursor-pointer hover:text-primary" : "text-muted-foreground cursor-not-allowed"
                 }`}
@@ -195,7 +199,7 @@ export function ExperimentForm() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form onSubmit={form.handleSubmit(onSubmit)} data-feedback-message="Saving the experiment into your lab memory">
           <AnimatePresence mode="wait">
             {step === 0 && (
               <motion.div
@@ -302,11 +306,13 @@ export function ExperimentForm() {
                 </Card>
 
                 <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={() => setLocation("/experiments")}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => setLocation("/experiments")} data-feedback="navigate" data-feedback-message="Returning to your experiments">Cancel</Button>
                   <Button
                     type="button"
                     onClick={() => setStep(1)}
                     disabled={!canProceedToStep2}
+                    data-feedback="navigate"
+                    data-feedback-message="Reviewing the experiment before it is saved"
                   >
                     Review →
                   </Button>
@@ -356,8 +362,8 @@ export function ExperimentForm() {
                 </Card>
 
                 <div className="flex justify-between pt-2">
-                  <Button type="button" variant="outline" onClick={() => setStep(0)}>← Edit Details</Button>
-                  <Button type="submit" disabled={createMutation.isPending}>
+                  <Button type="button" variant="outline" onClick={() => setStep(0)} data-feedback="navigate" data-feedback-message="Returning to the experiment details">← Edit Details</Button>
+                  <Button type="submit" disabled={createMutation.isPending} data-feedback="save" data-feedback-message="Saving the experiment into your lab memory">
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Experiment
                   </Button>

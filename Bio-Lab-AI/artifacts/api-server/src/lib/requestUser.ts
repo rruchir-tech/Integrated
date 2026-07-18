@@ -17,9 +17,7 @@ export function getRequestUserId(req: Request): string {
   if (localUserId) return localUserId;
 
   const auth = getAuthSafe(req);
-  const claims = (auth?.sessionClaims ?? {}) as SessionClaims;
-  const claimUserId = claims.userId;
-  const userId = auth?.userId ?? (typeof claimUserId === "string" ? claimUserId : null);
+  const userId = auth?.userId;
   if (userId) return userId;
 
   throw new Error("Authenticated user id is unavailable");

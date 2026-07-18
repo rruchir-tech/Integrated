@@ -29,7 +29,7 @@ const DEMO_USER: AppUser = {
   displayName: "Demo User",
   initials: "DU",
   email: "demo@labcopilot.app",
-  isAdmin: true,
+  isAdmin: import.meta.env.VITE_ENABLE_DEMO_ADMIN === "true",
   isLoaded: true,
   signOut: () => {},
 };

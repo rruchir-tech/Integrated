@@ -123,6 +123,8 @@ function OnboardingEmptyState() {
           size="lg"
           className="gap-2 font-semibold px-6"
           onClick={() => navigate("/experiments/new")}
+          data-feedback="create"
+          data-feedback-message="Opening a fresh experiment record"
         >
           <Upload className="h-4 w-4" />
           Upload your first experiment
@@ -134,6 +136,8 @@ function OnboardingEmptyState() {
             variant="outline"
             className="gap-2"
             onClick={() => navigate("/templates")}
+            data-feedback="navigate"
+            data-feedback-message="Opening your experiment templates"
           >
             <BookOpen className="h-4 w-4" />
             Browse templates
@@ -179,7 +183,7 @@ function LabPulsePanel({
 
   return (
     <motion.div
-      className="surface-panel rounded-lg p-5"
+      className="surface-panel premium-ring rounded-2xl p-5 sm:p-6"
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: "easeOut" }}
@@ -278,7 +282,13 @@ export function Dashboard() {
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           Something went wrong fetching your lab data. This is usually temporary.
         </p>
-        <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => refetch()}
+          data-feedback="analyze"
+          data-feedback-message="Checking the workspace signal again"
+        >
           Retry
         </Button>
       </div>
@@ -297,7 +307,7 @@ export function Dashboard() {
   const latestRun = dashboard.recent_experiments[0]?.name ?? "No recent run";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <LabPulsePanel successRate={successRate} activeRuns={activeRuns} latestRun={latestRun} />
 
       <div className="flex items-center justify-between gap-3">
@@ -346,7 +356,7 @@ export function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.08, type: "spring", stiffness: 200, damping: 20 }}
           >
-            <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
+            <Card className="surface-panel surface-panel-interactive h-full rounded-xl">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
                 <stat.icon className={`h-4 w-4 ${stat.color}`} />
@@ -374,7 +384,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <Card className="h-full hover:border-l-2 hover:border-l-primary transition-all overflow-hidden relative">
+          <Card className="surface-panel surface-panel-interactive h-full rounded-xl overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
             <CardHeader>
               <CardTitle>Experiments Over Time</CardTitle>
@@ -410,7 +420,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <Card className="h-full hover:border-l-2 hover:border-l-primary transition-all overflow-hidden relative">
+          <Card className="surface-panel surface-panel-interactive h-full rounded-xl overflow-hidden relative">
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-transparent pointer-events-none" />
             <CardHeader>
               <CardTitle>Assay Types</CardTitle>
@@ -457,7 +467,7 @@ export function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Card className="hover:border-l-2 hover:border-l-primary transition-all overflow-hidden">
+        <Card className="surface-panel surface-panel-interactive rounded-xl overflow-hidden">
           <CardHeader>
             <CardTitle>Recent Experiments</CardTitle>
           </CardHeader>
@@ -465,19 +475,19 @@ export function Dashboard() {
             <div className="space-y-4">
               {dashboard.recent_experiments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  No experiments yet. <Link href="/experiments/new" className="text-primary hover:underline">Create one</Link>.
+                  No experiments yet. <Link href="/experiments/new" className="text-primary hover:underline" data-feedback="create" data-feedback-message="Opening a fresh experiment record">Create one</Link>.
                 </div>
               ) : (
                 dashboard.recent_experiments.map((exp, idx) => (
                   <motion.div 
                     key={exp.id} 
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    className="interactive-lift flex items-center justify-between rounded-xl border border-border/70 bg-background/35 p-4 hover:border-primary/20 hover:bg-muted/50"
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.6 + idx * 0.05 }}
                   >
                     <div className="space-y-1">
-                      <Link href={`/experiments/${exp.id}`} className="font-medium hover:underline text-primary text-lg">
+                      <Link href={`/experiments/${exp.id}`} className="font-medium hover:underline text-primary text-lg" data-feedback="navigate" data-feedback-message={`Opening ${exp.name}`}>
                         {exp.name}
                       </Link>
                       <div className="flex items-center text-xs text-muted-foreground gap-3 font-mono">
@@ -505,7 +515,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
         >
-          <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
+          <Card className="surface-panel surface-panel-interactive h-full rounded-xl">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
@@ -547,7 +557,7 @@ export function Dashboard() {
                             <StatusIcon className="h-3 w-3 text-white" />
                           </div>
                           <div className="flex-1 min-w-0 pb-2">
-                            <Link href={`/experiments/${exp.id}`} className="text-sm font-medium hover:text-primary transition-colors truncate block">
+                            <Link href={`/experiments/${exp.id}`} className="text-sm font-medium hover:text-primary transition-colors truncate block" data-feedback="navigate" data-feedback-message={`Opening ${exp.name}`}>
                               {exp.name}
                             </Link>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -570,7 +580,7 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.65 }}
         >
-          <Card className="hover:border-l-2 hover:border-l-primary transition-all h-full">
+          <Card className="surface-panel surface-panel-interactive h-full rounded-xl">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="flex items-center gap-2">
                 <Microscope className="h-4 w-4 text-primary" />

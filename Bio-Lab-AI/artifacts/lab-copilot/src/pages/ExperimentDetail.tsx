@@ -363,7 +363,12 @@ export function ExperimentDetail() {
               updateMutation.mutate({ id: expId, data: { status: v as UpdateExperimentMutationBody["status"] } })
             }
           >
-            <SelectTrigger className="h-9 w-[130px] text-xs" title="Experiment stage">
+            <SelectTrigger
+              className="h-9 w-[130px] text-xs"
+              title="Experiment stage"
+              data-feedback="save"
+              data-feedback-message="Updating the experiment stage"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -375,7 +380,7 @@ export function ExperimentDetail() {
               )}
             </SelectContent>
           </Select>
-          <Link href={`/experiments/${expId}/edit`}>
+          <Link href={`/experiments/${expId}/edit`} data-feedback="navigate" data-feedback-message="Opening this experiment for editing">
             <MotionButton variant="outline" className="gap-2" whileTap={{ scale: 0.97 }}>
               <Pencil className="h-4 w-4" />
               Edit
@@ -386,6 +391,8 @@ export function ExperimentDetail() {
             className="gap-2"
             onClick={() => printExperimentReport({ experiment, rawData, suggestions })}
             whileTap={{ scale: 0.97 }}
+            data-feedback="export"
+            data-feedback-message="Preparing a traceable experiment report"
           >
             <FileDown className="h-4 w-4" />
             Export PDF
@@ -395,6 +402,8 @@ export function ExperimentDetail() {
             disabled={analyzeMutation.isPending}
             className="gap-2 relative overflow-hidden"
             whileTap={{ scale: 0.97 }}
+            data-feedback="analyze"
+            data-feedback-message="Bioalyzing this experiment in context"
           >
             {analyzeMutation.isPending && (
               <motion.div

@@ -745,18 +745,20 @@ export function DataAnalysisPage() {
                               suggestions: [],
                               detailedReport: report,
                             })}
+                            data-feedback="export"
+                            data-feedback-message="Preparing the AI analysis report"
                           >
                             <FileDown className="h-3.5 w-3.5" />
                             Export PDF
                           </Button>
-                          <Button variant="outline" size="sm" onClick={reset} className="gap-1.5">
+                          <Button variant="outline" size="sm" onClick={reset} className="gap-1.5" data-feedback="filter" data-feedback-message="Clearing the current analysis">
                             <RotateCcw className="h-3.5 w-3.5" />
                             Reset
                           </Button>
                         </>
                       )}
                       {!isStreaming && (
-                        <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5">
+                        <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5" data-feedback="analyze" data-feedback-message="Listening for what matters most in this analysis">
                           <Sparkles className="h-3.5 w-3.5" />
                           {focusNote.trim() ? "Change focus" : "Set focus"}
                         </Button>
@@ -766,6 +768,8 @@ export function DataAnalysisPage() {
                         onClick={generateReport}
                         disabled={isStreaming || !selectedId}
                         className="gap-1.5"
+                        data-feedback="analyze"
+                        data-feedback-message="Reading this plate and its experimental context"
                       >
                         {isStreaming ? (
                           <>
@@ -886,7 +890,14 @@ export function DataAnalysisPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button size="sm" onClick={runCompare} disabled={!compareId || comparing} className="gap-1.5">
+                    <Button
+                      size="sm"
+                      onClick={runCompare}
+                      disabled={!compareId || comparing}
+                      className="gap-1.5"
+                      data-feedback="analyze"
+                      data-feedback-message="Lining up both experiments and their evidence"
+                    >
                       {comparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitCompare className="h-3.5 w-3.5" />}
                       {comparing ? "Comparing…" : "Compare"}
                     </Button>

@@ -28,6 +28,9 @@ async function getClerkToken(): Promise<string | null> {
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  if (!path.startsWith("/api/")) {
+    throw new TypeError("apiFetch only accepts same-app /api/ paths.");
+  }
   const headers = new Headers(init.headers);
 
   if (!headers.has("authorization")) {
@@ -35,8 +38,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     if (token) headers.set("authorization", `Bearer ${token}`);
   }
 
-  // Only prepend the base URL to relative paths (those starting with "/").
-  const url = path.startsWith("/") ? `${BASE}${path}` : path;
+  const url = `${BASE}${path}`;
 
   return fetch(url, { ...init, headers });
 }

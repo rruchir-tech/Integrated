@@ -45,6 +45,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@clerk")) return "vendor-clerk";
+          if (id.includes("framer-motion") || id.includes("motion-dom") || id.includes("motion-utils")) return "vendor-motion";
+          if (id.includes("@tanstack")) return "vendor-query";
+          if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+          if (id.includes("react-dom") || id.includes("/react/") || id.includes("wouter")) return "vendor-react";
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,

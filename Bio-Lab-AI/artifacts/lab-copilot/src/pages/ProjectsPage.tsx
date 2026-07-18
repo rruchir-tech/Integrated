@@ -86,7 +86,12 @@ export function ProjectsPage() {
             Group related experiments so the AI can reason across your whole line of research.
           </p>
         </div>
-        <Button className="gap-2" onClick={() => setOpen(true)}>
+        <Button
+          className="gap-2"
+          onClick={() => setOpen(true)}
+          data-feedback="create"
+          data-feedback-message="Making space for a new research project"
+        >
           <Plus className="h-4 w-4" />
           New Project
         </Button>
@@ -110,7 +115,12 @@ export function ProjectsPage() {
             Create a project, describe its goal, and group your experiments under it — the copilot will use the
             whole project as context.
           </p>
-          <Button onClick={() => setOpen(true)} className="gap-2">
+          <Button
+            onClick={() => setOpen(true)}
+            className="gap-2"
+            data-feedback="create"
+            data-feedback-message="Making space for your first research project"
+          >
             <Plus className="h-4 w-4" />
             Create your first project
           </Button>
@@ -126,8 +136,12 @@ export function ProjectsPage() {
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ delay: idx * 0.05 }}
               >
-                <Link href={`/projects/${p.id}`}>
-                  <Card className="h-full cursor-pointer hover:border-l-2 hover:border-l-primary transition-all flex flex-col">
+                <Link
+                  href={`/projects/${p.id}`}
+                  data-feedback="navigate"
+                  data-feedback-message={`Opening ${p.name}`}
+                >
+                  <Card className="surface-panel surface-panel-interactive h-full cursor-pointer rounded-2xl flex flex-col">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-base leading-tight">{p.name}</CardTitle>
@@ -178,8 +192,13 @@ export function ProjectsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeModal}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
+            <Button variant="outline" onClick={closeModal} data-feedback="filter" data-feedback-message="Closing the project draft">Cancel</Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={createMutation.isPending}
+              data-feedback="save"
+              data-feedback-message="Creating your project and its shared context"
+            >
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Create Project
             </Button>
