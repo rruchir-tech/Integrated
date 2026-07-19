@@ -605,10 +605,12 @@ router.post("/experiments/:id/data-analysis", aiRateLimiter, async (req, res) =>
     const exp = rows[0];
 
     const body = requestBody(req.body);
-    let focusNote = "";
+    let notes = "";
+    let quantifyRequest = "";
     let refineNote = "";
     try {
-      focusNote = optionalString(body.focus_note) ? assertMaxChars(String(body.focus_note), "Focus note") : "";
+      notes = optionalString(body.notes) ? assertMaxChars(String(body.notes), "Notes") : "";
+      quantifyRequest = optionalString(body.quantify_request) ? assertMaxChars(String(body.quantify_request), "Quantify request") : "";
       refineNote = optionalString(body.refine_note) ? assertMaxChars(String(body.refine_note), "Refinement note") : "";
     } catch (err) {
       if (rejectInputError(res, err)) return;
@@ -659,7 +661,7 @@ Always:
 - cite numeric data explicitly (e.g., "control mean 0.985, CV 5.1%", "1.0 µM caused ~72% drop vs control"),
 - distinguish between strong evidence and speculation,
 - and keep recommendations practical for a small biotech lab.
-${focusNote ? `\nThe scientist specifically wants you to focus on or be aware of: ${focusNote}. Address this directly in the report, not just the generic sections.\n` : ""}
+${notes ? `\nADDITIONAL CONTEXT from the scientist (beyond what's already in the experiment's protocol/notes): ${notes}\n` : ""}${quantifyRequest ? `\nWHAT THE SCIENTIST SPECIFICALLY WANTS QUANTIFIED: ${quantifyRequest}. Make this the centerpiece of section 3 (Dose-Response or Pattern Analysis) — compute exactly this using the correct method for the assay, not a generic summary.\n` : ""}
 Respond in structured markdown with these exact sections:
 ## 1. Summary of Experiment
 ## 2. Data Quality & Controls

@@ -115,6 +115,27 @@ function hasGraphableData(summary: ParsedSummary): boolean {
   return !!summary.signal_stats || (Array.isArray(summary.condition_groups) && summary.condition_groups.length > 0);
 }
 
+// Deterministic (not AI-judged) check for whether a dose-response/IC50 section
+// is actually relevant to this experiment — mirrors the keyword lists in the
+// backend's "pharmacology" AND "viability" assay guides
+// (artifacts/api-server/src/lib/assayKnowledge.ts), since cytotoxicity/viability
+// assays (MTT, MTS, CCK-8, etc.) are usually run as dose-response curves in
+// practice even though "viability" itself doesn't say "dose-response". Kept as
+// a simple rule rather than an AI decision: picking which visual sections to
+// show is a categorization problem, not an analysis one, and a wrong AI guess
+// here would be far more visible/annoying than a slightly-too-generous keyword
+// match — biased toward showing it when in doubt, not hiding it.
+const DOSE_RESPONSE_KEYWORDS = [
+  "dose-response", "dose response", "ic50", "ec50", "inhibitor", "inhibition",
+  "agonist", "antagonist", "potency", "drug response", "compound screen", "titration",
+  "mtt", "mts", "xtt", "cck-8", "cck8", "resazurin", "alamar", "celltiter", "ctg",
+  "viability", "cytotox",
+];
+function isDoseResponseRelevant(assayType: string, notes: string, quantifyRequest: string): boolean {
+  const hay = `${assayType} ${notes} ${quantifyRequest}`.toLowerCase();
+  return DOSE_RESPONSE_KEYWORDS.some((k) => hay.includes(k));
+}
+
 // Mean signal per plate column (1–12) — a quick way to spot dose gradients or
 // edge effects (columns 1/12 drifting from the interior).
 function columnMeans(wells: PlateWell[]): { col: string; mean: number }[] {
@@ -383,12 +404,14 @@ export function DataAnalysisPage() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // What the AI should focus on / be aware of — steers the report instead of a
-  // fixed prompt guessing. Collected via a pop-up the moment an experiment with
-  // data (and no report yet) is selected, so it can't be missed/skipped by
-  // accident like an easy-to-ignore inline field. refineNote is a smaller
-  // follow-up note once a report already exists (mirrors the Protocol refine pattern).
-  const [focusNote, setFocusNote] = useState("");
+  // Two distinct fields, collected via a pop-up the moment an experiment is
+  // selected (not gated on data existing — the AI already has protocol/notes
+  // context from the experiment tab; these steer THIS analysis specifically):
+  // "notes" = extra context beyond the protocol; "quantifyRequest" = what to
+  // actually compute. refineNote is a smaller follow-up once a report exists
+  // (mirrors the Protocol refine pattern).
+  const [notes, setNotes] = useState("");
+  const [quantifyRequest, setQuantifyRequest] = useState("");
   const [refineNote, setRefineNote] = useState("");
   const [showFocusModal, setShowFocusModal] = useState(false);
   // Tracks which experiment id we've already prompted for (submitted OR skipped),
@@ -431,6 +454,11 @@ export function DataAnalysisPage() {
   const controlMetrics = isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells)
     ? computeControlMetrics(parsedSelectedSummary.wells, wellRoles)
     : null;
+  const doseResponseRelevant = isDoseResponseRelevant(
+    selectedExp?.assay_type ?? "",
+    `${selectedExp?.notes ?? ""} ${notes}`,
+    quantifyRequest,
+  );
 
   // A previously-generated report is persisted server-side — show it immediately
   // on selecting an experiment rather than requiring the user to regenerate.
@@ -447,13 +475,14 @@ export function DataAnalysisPage() {
     }
   }, [selectedId, selectedExp]);
 
-  // Pop up the "what should the AI focus on" prompt automatically the moment an
-  // experiment with data but no report yet is selected — asking up front, not
-  // guessing, was the whole point; an easy-to-miss inline field defeated that.
+  // Pop up the notes/quantify prompt the moment an unanalyzed experiment is
+  // selected — NOT gated on data existing. The AI already has protocol/notes
+  // context from the experiment tab; you can describe what you want quantified
+  // before or after uploading data. Only "Bioalyze" itself requires real data.
   useEffect(() => {
     if (!selectedId || !selectedExp) return;
     if (promptedForId.current === selectedId) return;
-    if (selectedExp.raw_data_json && !selectedExp.data_analysis_report) {
+    if (!selectedExp.data_analysis_report) {
       promptedForId.current = selectedId;
       setShowFocusModal(true);
     }
@@ -475,7 +504,8 @@ export function DataAnalysisPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(focusNote.trim() ? { focus_note: focusNote.trim() } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(quantifyRequest.trim() ? { quantify_request: quantifyRequest.trim() } : {}),
           ...(hasReport && refineNote.trim() ? { refine_note: refineNote.trim() } : {}),
         }),
         signal: controller.signal,
@@ -530,7 +560,8 @@ export function DataAnalysisPage() {
     setHasReport(false);
     setStreamError(null);
     setIsStreaming(false);
-    setFocusNote("");
+    setNotes("");
+    setQuantifyRequest("");
     setRefineNote("");
     if (compareAbortRef.current) compareAbortRef.current.abort();
     setCompareId(null);
@@ -707,7 +738,7 @@ export function DataAnalysisPage() {
                   </Card>
                 )}
 
-                {isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
+                {isPlate96 && doseResponseRelevant && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
                   controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null ? (
                     <DoseResponseCard
                       expId={selectedId}
@@ -781,7 +812,7 @@ export function DataAnalysisPage() {
                       {!isStreaming && (
                         <Button variant="outline" size="sm" onClick={() => setShowFocusModal(true)} className="gap-1.5" data-feedback="analyze" data-feedback-message="Listening for what matters most in this analysis">
                           <Sparkles className="h-3.5 w-3.5" />
-                          {focusNote.trim() ? "Change focus" : "Set focus"}
+                          {notes.trim() || quantifyRequest.trim() ? "Change request" : "Set request"}
                         </Button>
                       )}
                       <Button
@@ -813,9 +844,14 @@ export function DataAnalysisPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-4">
-                  {!isStreaming && focusNote.trim() && (
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-primary">Focus: </span>{focusNote}
+                  {!isStreaming && (notes.trim() || quantifyRequest.trim()) && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                      {quantifyRequest.trim() && (
+                        <div><span className="font-medium text-primary">Quantify: </span>{quantifyRequest}</div>
+                      )}
+                      {notes.trim() && (
+                        <div><span className="font-medium text-primary">Notes: </span>{notes}</div>
+                      )}
                     </div>
                   )}
                   {!isStreaming && hasReport && (
@@ -973,31 +1009,51 @@ export function DataAnalysisPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
-              What should the AI focus on?
+              What are we analyzing?
             </DialogTitle>
             <DialogDescription>
-              Tell it what you want checked or be aware of — a specific well, a concern, or just what you need to know. Leave it blank for a general analysis.
+              The AI already has the protocol and everything else on this experiment's page — this is just for what's specific to this analysis. Both are optional and you can change them anytime with "Set request" above.
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            autoFocus
-            value={focusNote}
-            onChange={(e) => setFocusNote(e.target.value)}
-            placeholder="e.g. 'I'm worried column 12 looks off' or 'just tell me the IC50, skip the full report'"
-            rows={3}
-            className="text-sm"
-          />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">What do you want quantified?</label>
+              <Textarea
+                autoFocus
+                value={quantifyRequest}
+                onChange={(e) => setQuantifyRequest(e.target.value)}
+                placeholder="e.g. 'IC50 for this dose series' or 'just flag anything unusual in the heatmap'"
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Anything else the AI should know?</label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. 'ran 30 min longer than usual' or 'compound was slightly cloudy at the top dose'"
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+          </div>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              onClick={() => { setShowFocusModal(false); generateReport(); }}
-            >
-              Skip, just analyze
-            </Button>
-            <Button onClick={() => { setShowFocusModal(false); generateReport(); }} className="gap-1.5">
-              <BrainCircuit className="h-3.5 w-3.5" />
-              Bioalyze this plate
-            </Button>
+            {selectedExp?.raw_data_json ? (
+              <>
+                <Button variant="outline" onClick={() => setShowFocusModal(false)}>
+                  Just save
+                </Button>
+                <Button onClick={() => { setShowFocusModal(false); generateReport(); }} className="gap-1.5">
+                  <BrainCircuit className="h-3.5 w-3.5" />
+                  Save & Bioalyze now
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setShowFocusModal(false)} className="gap-1.5">
+                Continue
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
