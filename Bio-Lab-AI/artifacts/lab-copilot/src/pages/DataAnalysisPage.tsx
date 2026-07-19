@@ -43,9 +43,10 @@ import { PlateHeatmap } from "@/components/PlateHeatmap";
 import { DoseResponseCard } from "@/components/DoseResponseCard";
 import { CopilotChat } from "@/components/chat/CopilotChat";
 import { AttachDataCard } from "@/components/experiment/AttachDataCard";
-import { computeControlMetrics, type WellRole } from "@/lib/plateMetrics";
+import { buildControlSummary, computeControlMetrics, type WellRole } from "@/lib/plateMetrics";
 import { printExperimentReport } from "@/lib/printExperimentReport";
 import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader } from "@/components/lab/LivingLab";
+import { ImproveAiDialog } from "@/components/ai/ImproveAiDialog";
 
 // The parser emits one of two shapes into experiments.raw_data_json:
 //  1. A 96-well plate ("_type":"plate96") with { stats, wells, metadata }
@@ -402,6 +403,7 @@ export function DataAnalysisPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [reportRequestId, setReportRequestId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Two distinct fields, collected via a pop-up the moment an experiment is
@@ -424,6 +426,7 @@ export function DataAnalysisPage() {
   const [compareReport, setCompareReport] = useState("");
   const [comparing, setComparing] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
+  const [compareRequestId, setCompareRequestId] = useState<string | null>(null);
   const compareAbortRef = useRef<AbortController | null>(null);
 
   const { data: allExperiments, isLoading: listLoading } = useListExperiments(undefined, {
@@ -459,6 +462,9 @@ export function DataAnalysisPage() {
     `${selectedExp?.notes ?? ""} ${notes}`,
     quantifyRequest,
   );
+  const controlSummary = isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells)
+    ? buildControlSummary(parsedSelectedSummary.wells, wellRoles)
+    : undefined;
 
   // A previously-generated report is persisted server-side — show it immediately
   // on selecting an experiment rather than requiring the user to regenerate.
@@ -472,6 +478,7 @@ export function DataAnalysisPage() {
     if (selectedExp.data_analysis_report) {
       setReport(selectedExp.data_analysis_report);
       setHasReport(true);
+      setReportRequestId(selectedExp.data_analysis_request_id ?? null);
     }
   }, [selectedId, selectedExp]);
 
@@ -498,6 +505,7 @@ export function DataAnalysisPage() {
     setReport("");
     setHasReport(false);
     setStreamError(null);
+    setReportRequestId(null);
 
     try {
       const response = await apiFetch(`/api/experiments/${selectedId}/data-analysis`, {
@@ -507,6 +515,7 @@ export function DataAnalysisPage() {
           ...(notes.trim() ? { notes: notes.trim() } : {}),
           ...(quantifyRequest.trim() ? { quantify_request: quantifyRequest.trim() } : {}),
           ...(hasReport && refineNote.trim() ? { refine_note: refineNote.trim() } : {}),
+          ...(controlSummary ? { control_summary: controlSummary } : {}),
         }),
         signal: controller.signal,
       });
@@ -535,6 +544,7 @@ export function DataAnalysisPage() {
               if (data.content) setReport((prev) => prev + data.content);
               if (data.error) setStreamError("The AI analysis could not be generated. Please check your API configuration or try again.");
               if (data.done) setHasReport(true);
+              if (data.request_id) setReportRequestId(data.request_id);
             } catch {}
           }
         }
@@ -563,11 +573,13 @@ export function DataAnalysisPage() {
     setNotes("");
     setQuantifyRequest("");
     setRefineNote("");
+    setReportRequestId(null);
     if (compareAbortRef.current) compareAbortRef.current.abort();
     setCompareId(null);
     setCompareReport("");
     setComparing(false);
     setCompareError(null);
+    setCompareRequestId(null);
   };
 
   const runCompare = async () => {
@@ -579,6 +591,7 @@ export function DataAnalysisPage() {
     setComparing(true);
     setCompareReport("");
     setCompareError(null);
+    setCompareRequestId(null);
 
     try {
       const response = await apiFetch(`/api/experiments/compare`, {
@@ -608,6 +621,7 @@ export function DataAnalysisPage() {
               const data = JSON.parse(line.slice(6));
               if (data.content) setCompareReport((prev) => prev + data.content);
               if (data.error) setCompareError("The comparison could not be generated. Please try again.");
+              if (data.request_id) setCompareRequestId(data.request_id);
             } catch {}
           }
         }
@@ -781,7 +795,7 @@ export function DataAnalysisPage() {
                         AI Analysis Report
                       </CardTitle>
                       <CardDescription className="mt-1">
-                        Gemini can generate graphs, summaries, and a structured report from uploaded experiment data.
+                        Bio-Lab AI can generate graphs, summaries, and a structured report from uploaded experiment data.
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
@@ -889,11 +903,14 @@ export function DataAnalysisPage() {
                   )}
 
                   {(report || isStreaming) && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
-                      {isStreaming && (
-                        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />
-                      )}
+                    <div className="space-y-4">
+                      <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
+                        {isStreaming && (
+                          <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />
+                        )}
+                      </div>
+                      {!isStreaming && <ImproveAiDialog requestId={reportRequestId} output={report} taskLabel="data-analysis report" compact />}
                     </div>
                   )}
                 </CardContent>
@@ -969,9 +986,12 @@ export function DataAnalysisPage() {
                   )}
 
                   {(compareReport || comparing) && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{compareReport}</ReactMarkdown>
-                      {comparing && <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />}
+                    <div className="space-y-4">
+                      <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{compareReport}</ReactMarkdown>
+                        {comparing && <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 rounded-sm" />}
+                      </div>
+                      {!comparing && <ImproveAiDialog requestId={compareRequestId} output={compareReport} taskLabel="experiment comparison" compact />}
                     </div>
                   )}
                 </CardContent>
