@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Link } from "wouter";
 import { apiFetch } from "@/lib/apiFetch";
 import { useQueryClient } from "@tanstack/react-query";
-import { useListExperiments, useGetExperiment, getListExperimentsQueryKey, getGetExperimentQueryKey } from "@workspace/api-client-react";
+import { useListExperiments, useGetExperiment, getListExperimentsQueryKey, getGetExperimentQueryKey, getListGeminiMessagesQueryKey } from "@workspace/api-client-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -40,10 +39,9 @@ import {
 import { format, parseISO } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import { PlateHeatmap } from "@/components/PlateHeatmap";
-import { DoseResponseCard } from "@/components/DoseResponseCard";
 import { CopilotChat } from "@/components/chat/CopilotChat";
 import { AttachDataCard } from "@/components/experiment/AttachDataCard";
-import { computeControlMetrics, type WellRole } from "@/lib/plateMetrics";
+import { type WellRole } from "@/lib/plateMetrics";
 import { printExperimentReport } from "@/lib/printExperimentReport";
 import { LabConversation, LabPageHeader, LabPanel, LabSectionHeader } from "@/components/lab/LivingLab";
 
@@ -113,27 +111,6 @@ function hasGraphableData(summary: ParsedSummary): boolean {
     return Array.isArray(summary.wells) && summary.wells.some((w) => w.value !== null);
   }
   return !!summary.signal_stats || (Array.isArray(summary.condition_groups) && summary.condition_groups.length > 0);
-}
-
-// Deterministic (not AI-judged) check for whether a dose-response/IC50 section
-// is actually relevant to this experiment — mirrors the keyword lists in the
-// backend's "pharmacology" AND "viability" assay guides
-// (artifacts/api-server/src/lib/assayKnowledge.ts), since cytotoxicity/viability
-// assays (MTT, MTS, CCK-8, etc.) are usually run as dose-response curves in
-// practice even though "viability" itself doesn't say "dose-response". Kept as
-// a simple rule rather than an AI decision: picking which visual sections to
-// show is a categorization problem, not an analysis one, and a wrong AI guess
-// here would be far more visible/annoying than a slightly-too-generous keyword
-// match — biased toward showing it when in doubt, not hiding it.
-const DOSE_RESPONSE_KEYWORDS = [
-  "dose-response", "dose response", "ic50", "ec50", "inhibitor", "inhibition",
-  "agonist", "antagonist", "potency", "drug response", "compound screen", "titration",
-  "mtt", "mts", "xtt", "cck-8", "cck8", "resazurin", "alamar", "celltiter", "ctg",
-  "viability", "cytotox",
-];
-function isDoseResponseRelevant(assayType: string, notes: string, quantifyRequest: string): boolean {
-  const hay = `${assayType} ${notes} ${quantifyRequest}`.toLowerCase();
-  return DOSE_RESPONSE_KEYWORDS.some((k) => hay.includes(k));
 }
 
 // Mean signal per plate column (1–12) — a quick way to spot dose gradients or
@@ -264,6 +241,8 @@ function Plate96Panel({ summary }: { summary: { kind: "plate96" } & Plate96Summa
                     formatter={(v: number) => [v.toFixed(3), "mean"]}
                     labelFormatter={(l) => `Column ${l}`}
                     contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                    itemStyle={{ color: "hsl(var(--popover-foreground))" }}
+                    labelStyle={{ color: "hsl(var(--popover-foreground))" }}
                   />
                   {stats?.mean != null && <ReferenceLine y={stats.mean} stroke="hsl(var(--primary))" strokeDasharray="3 3" />}
                   <Bar dataKey="mean" radius={[3, 3, 0, 0]}>
@@ -395,6 +374,125 @@ function QuantitativeSummaryPanel({ id }: { id: number }) {
     : <CsvPanel summary={summary} />;
 }
 
+/**
+ * Focused "ask for a computed answer" box — e.g. dose-response/IC50 questions
+ * that used to require a dedicated curve-fitting widget with manual row/column/
+ * concentration config. Shares the SAME conversation as the "Ask about this
+ * data" chat below (same grounding, same history) — this is just a second,
+ * differently-framed entry point into it: shows only the latest exchange
+ * instead of a full scrolling transcript, and invalidates the messages query
+ * so the full chat picks up what was asked here too.
+ */
+function QuantifyBox({ conversationId }: { conversationId: number }) {
+  const queryClient = useQueryClient();
+  const [question, setQuestion] = useState("");
+  const [askedQuestion, setAskedQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  const ask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = question.trim();
+    if (!q || isAsking) return;
+
+    setIsAsking(true);
+    setAskedQuestion(q);
+    setAnswer("");
+    setAskError(null);
+    setQuestion("");
+
+    try {
+      const response = await apiFetch(`/api/gemini/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: q }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error ?? "Request failed");
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.content) setAnswer((prev) => prev + data.content);
+              if (data.error) setAskError(data.error);
+            } catch {}
+          }
+        }
+      }
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : "Couldn't reach the AI. Try again.");
+    } finally {
+      setIsAsking(false);
+      queryClient.invalidateQueries({ queryKey: getListGeminiMessagesQueryKey(conversationId) });
+    }
+  };
+
+  return (
+    <Card className="lab-panel rounded-[1.6rem] border-primary/20 bg-primary/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-primary" />
+          Quantify anything
+        </CardTitle>
+        <CardDescription>
+          Ask for a specific computed answer — e.g. "what's the IC50 for this dose series?" or "what's the fold-change vs control?" Grounded in this experiment's protocol and data.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <form onSubmit={ask} className="flex gap-2">
+          <Textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="e.g. what's the IC50 for this run?"
+            rows={1}
+            className="text-sm min-h-9 resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                ask(e as unknown as React.FormEvent);
+              }
+            }}
+          />
+          <Button type="submit" size="sm" disabled={isAsking || !question.trim()} className="gap-1.5 flex-shrink-0">
+            {isAsking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+            Ask
+          </Button>
+        </form>
+
+        {askError && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            {askError}
+          </div>
+        )}
+
+        {(answer || isAsking) && (
+          <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground">{askedQuestion}</div>
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+              {isAsking && <span className="inline-block w-1.5 h-4 ml-1 bg-primary animate-pulse align-middle" />}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function DataAnalysisPage() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -451,14 +549,6 @@ export function DataAnalysisPage() {
       setWellRoles({});
     }
   }, [selectedId]);
-  const controlMetrics = isPlate96 && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells)
-    ? computeControlMetrics(parsedSelectedSummary.wells, wellRoles)
-    : null;
-  const doseResponseRelevant = isDoseResponseRelevant(
-    selectedExp?.assay_type ?? "",
-    `${selectedExp?.notes ?? ""} ${notes}`,
-    quantifyRequest,
-  );
 
   // A previously-generated report is persisted server-side — show it immediately
   // on selecting an experiment rather than requiring the user to regenerate.
@@ -738,34 +828,8 @@ export function DataAnalysisPage() {
                   </Card>
                 )}
 
-                {isPlate96 && doseResponseRelevant && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
-                  controlMetrics?.meanPos != null && controlMetrics?.meanNeg != null ? (
-                    <DoseResponseCard
-                      expId={selectedId}
-                      wells={parsedSelectedSummary.wells}
-                      meanPos={controlMetrics.meanPos}
-                      meanNeg={controlMetrics.meanNeg}
-                    />
-                  ) : (
-                    <Card className="lab-panel rounded-[1.6rem] border-dashed border-primary/30 bg-primary/5">
-                      <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-3 py-4">
-                        <div className="flex items-center gap-3">
-                          <TrendingUp className="h-5 w-5 text-primary flex-shrink-0" />
-                          <div>
-                            <p className="text-sm font-medium">Dose-response curve needs control wells marked</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Mark positive/negative controls on the experiment page to unlock the IC50/EC50 fit here.
-                            </p>
-                          </div>
-                        </div>
-                        <Link href={`/experiments/${selectedId}`}>
-                          <Button size="sm" variant="outline" className="gap-1.5 whitespace-nowrap">
-                            Mark controls
-                          </Button>
-                        </Link>
-                      </CardContent>
-                    </Card>
-                  )
+                {selectedExp?.conversation_id && (
+                  <QuantifyBox conversationId={selectedExp.conversation_id} />
                 )}
               </>
             )}
