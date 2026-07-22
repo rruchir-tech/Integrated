@@ -751,6 +751,164 @@ ${relatedContext}`;
   }
 });
 
+interface QuantifyChartSpec {
+  type: "column_means" | "row_means" | "well_scatter" | "dose_response";
+  title: string;
+  // Only meaningful for type "dose_response" — extracted from the scientist's
+  // OWN question (e.g. "column 1, top conc 100uM, 3-fold serial dilution").
+  // Never guessed from data the AI hasn't been told.
+  dose_response_config?: {
+    orientation: "row" | "column";
+    index: string;
+    top_concentration: number;
+    unit: string;
+    dilution_factor: number;
+    reverse: boolean;
+  };
+}
+
+function parseQuantifyResponse(text: string): { answer: string; chart: QuantifyChartSpec | null } {
+  try {
+    const parsed = JSON.parse(text) as { answer?: unknown; chart?: unknown };
+    const answer = typeof parsed.answer === "string" ? parsed.answer : "";
+    let chart: QuantifyChartSpec | null = null;
+    if (parsed.chart && typeof parsed.chart === "object") {
+      const c = parsed.chart as Record<string, unknown>;
+      const validTypes = ["column_means", "row_means", "well_scatter", "dose_response"];
+      if (typeof c.type === "string" && validTypes.includes(c.type)) {
+        chart = { type: c.type as QuantifyChartSpec["type"], title: typeof c.title === "string" ? c.title : "Chart" };
+        if (chart.type === "dose_response" && c.dose_response_config && typeof c.dose_response_config === "object") {
+          const dc = c.dose_response_config as Record<string, unknown>;
+          const orientation = dc.orientation === "row" || dc.orientation === "column" ? dc.orientation : null;
+          const topConc = typeof dc.top_concentration === "number" && dc.top_concentration > 0 ? dc.top_concentration : null;
+          // A dose-response chart needs real config extracted from the question —
+          // if it's incomplete, drop the chart entirely rather than guess at it.
+          if (orientation && topConc) {
+            chart.dose_response_config = {
+              orientation,
+              index: typeof dc.index === "string" ? dc.index : (orientation === "column" ? "1" : "A"),
+              top_concentration: topConc,
+              unit: typeof dc.unit === "string" ? dc.unit : "µM",
+              dilution_factor: typeof dc.dilution_factor === "number" && dc.dilution_factor > 1 ? dc.dilution_factor : 3,
+              reverse: dc.reverse === true,
+            };
+          } else {
+            chart = null;
+          }
+        }
+      }
+    }
+    return { answer, chart };
+  } catch {
+    return { answer: text, chart: null };
+  }
+}
+
+// Focused Q&A for the Data Analysis "Quantify anything" box. Unlike the
+// streaming /gemini/conversations chat, this returns structured JSON so the
+// frontend can render a REAL chart when one is warranted — but the AI only
+// ever picks the chart TYPE and (for dose-response) config explicitly stated
+// in the scientist's own question; it never invents data points. The actual
+// numbers are always computed deterministically client-side from the real
+// plate data. Persists into the same conversation as the streaming chat, so
+// both surfaces show one continuous history.
+router.post("/experiments/:id/quantify", aiRateLimiter, async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const id = parseInt(String(req.params.id), 10);
+    const exp = await findOwnedExperiment(id, userId);
+    if (!exp) return res.status(404).json({ error: "Experiment not found" });
+
+    const body = requestBody(req.body);
+    let question: string;
+    try {
+      question = optionalString(body.question) ? assertMaxChars(String(body.question), "Question") : "";
+    } catch (err) {
+      if (rejectInputError(res, err)) return;
+      throw err;
+    }
+    if (!question) return res.status(400).json({ error: "A question is required" });
+
+    // Every experiment gets a conversation at creation time now, but older
+    // experiments predating that change may still have none — create one
+    // lazily here rather than assume it always exists.
+    let convId = exp.conversation_id;
+    if (!convId) {
+      const conv = await db.insert(conversations).values({ title: `Copilot: ${exp.name}`, user_id: userId }).returning();
+      convId = conv[0].id;
+      await db.update(experiments).set({ conversation_id: convId, updated_at: new Date() })
+        .where(and(eq(experiments.id, id), eq(experiments.user_id, userId)));
+    }
+
+    let plateSummary: Record<string, unknown> | null = null;
+    if (exp.raw_data_json) {
+      try { plateSummary = JSON.parse(exp.raw_data_json); } catch {}
+    }
+    const plateSummaryText = plateSummary
+      ? JSON.stringify(plateSummary, null, 2).substring(0, 4000)
+      : "No plate data uploaded yet for this experiment.";
+
+    const assayGuidance = analysisKnowledgeBlock(`${exp.assay_type} ${exp.notes ?? ""}`);
+
+    const systemInstruction = `You are a lab data copilot answering a focused, specific question about one experiment's plate data — not writing a full report, just answering directly like a colleague would.
+
+${assayGuidance}
+
+Answer with real numbers from the data provided, citing specific wells/values. Be concise — a few sentences, not a report.
+
+If (and only if) a chart would genuinely help answer this question, also propose one, but you must NEVER invent the actual data — you only pick WHICH chart and, for dose-response, extract its configuration strictly from what the scientist explicitly stated in their question:
+- "column_means" / "row_means": mean signal per plate column/row — use when the question is about spatial patterns, edge effects, or uniformity.
+- "well_scatter": every well's raw value — use for a general distribution/outlier view.
+- "dose_response": a 4PL dose-response curve — use ONLY when the question is about potency/IC50/EC50 AND the scientist's question states (or the experiment notes already state) which column or row is the dose series, the top concentration, and the dilution factor. If any of these is missing or ambiguous, do NOT propose this chart — instead, in your answer, ask the scientist to specify orientation/column-or-row/top concentration/dilution factor.
+If no chart is warranted or you don't have enough information, set "chart" to null.
+
+Respond in this exact JSON format:
+{
+  "answer": "your direct answer, a few sentences, with real numbers",
+  "chart": null | {
+    "type": "column_means" | "row_means" | "well_scatter" | "dose_response",
+    "title": "short chart title",
+    "dose_response_config": null | { "orientation": "row" | "column", "index": "1", "top_concentration": 100, "unit": "µM", "dilution_factor": 3, "reverse": false }
+  }
+}`;
+
+    const userPrompt = `Experiment: ${exp.name} (${exp.assay_type}, ${exp.instrument})
+Notes: ${exp.notes ?? "None"}
+
+Plate data summary:
+\`\`\`json
+${plateSummaryText}
+\`\`\`
+
+Scientist's question: ${question}`;
+
+    await db.insert(messages).values({ conversationId: convId, role: "user", content: question });
+
+    const response = await generateContentWithRetry({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      config: {
+        systemInstruction,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    const { answer, chart } = parseQuantifyResponse(response.text ?? "{}");
+    if (!answer.trim()) {
+      return res.status(502).json({ error: "The AI returned an empty answer. Please try again." });
+    }
+
+    await db.insert(messages).values({ conversationId: convId, role: "assistant", content: answer });
+
+    return res.json({ answer, chart, conversation_id: convId });
+  } catch (err) {
+    req.log.error({ err }, "Failed to answer quantify question");
+    return res.status(500).json({ error: "Failed to answer quantify question" });
+  }
+});
+
 router.get("/templates", async (req, res) => {
   const userId = getRequestUserId(req);
   const rows = await db

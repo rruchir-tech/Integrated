@@ -37,7 +37,8 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ComposedChart, Line, Scatter, CartesianGrid } from "recharts";
+import { fit4PL, serialDilution } from "@/lib/doseResponse";
 import { PlateHeatmap } from "@/components/PlateHeatmap";
 import { CopilotChat } from "@/components/chat/CopilotChat";
 import { AttachDataCard } from "@/components/experiment/AttachDataCard";
@@ -130,6 +131,32 @@ function columnMeans(wells: PlateWell[]): { col: string; mean: number }[] {
     if (acc && acc.n > 0) out.push({ col: String(c), mean: acc.total / acc.n });
   }
   return out;
+}
+
+// Mean signal per plate row (A–H) — mirrors columnMeans for row-wise gradients.
+function rowMeans(wells: PlateWell[]): { row: string; mean: number }[] {
+  const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  const sums = new Map<string, { total: number; n: number }>();
+  for (const w of wells) {
+    if (w.value === null || w.status === "blank") continue;
+    const acc = sums.get(w.row) ?? { total: 0, n: 0 };
+    acc.total += w.value;
+    acc.n += 1;
+    sums.set(w.row, acc);
+  }
+  const out: { row: string; mean: number }[] = [];
+  for (const r of ROWS) {
+    const acc = sums.get(r);
+    if (acc && acc.n > 0) out.push({ row: r, mean: acc.total / acc.n });
+  }
+  return out;
+}
+
+// Every well's raw value in plate order — a general distribution/outlier view.
+function wellScatter(wells: PlateWell[]): { well: string; value: number }[] {
+  return wells
+    .filter((w) => w.value !== null && w.status !== "blank")
+    .map((w) => ({ well: w.well, value: w.value as number }));
 }
 
 function ExperimentMetaCard({ id }: { id: number }) {
@@ -374,20 +401,150 @@ function QuantitativeSummaryPanel({ id }: { id: number }) {
     : <CsvPanel summary={summary} />;
 }
 
+interface QuantifyChartSpec {
+  type: "column_means" | "row_means" | "well_scatter" | "dose_response";
+  title: string;
+  dose_response_config?: {
+    orientation: "row" | "column";
+    index: string;
+    top_concentration: number;
+    unit: string;
+    dilution_factor: number;
+    reverse: boolean;
+  };
+}
+
+function fmtConc(x: number): string {
+  if (x >= 100) return x.toFixed(0);
+  if (x >= 1) return x.toFixed(1);
+  if (x >= 0.01) return x.toFixed(2);
+  return x.toExponential(1);
+}
+
+// Renders the chart the AI picked — but the AI only ever chose the TYPE (and,
+// for dose-response, config it read from the scientist's own question). Every
+// number plotted here is computed from the real wells, never from the AI's
+// response text.
+function QuantifyChart({ spec, wells }: { spec: QuantifyChartSpec; wells: PlateWell[] }) {
+  const tooltipStyle = {
+    contentStyle: { background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 },
+    itemStyle: { color: "hsl(var(--popover-foreground))" },
+    labelStyle: { color: "hsl(var(--popover-foreground))" },
+  };
+
+  if (spec.type === "column_means" || spec.type === "row_means") {
+    const isCol = spec.type === "column_means";
+    const data = isCol ? columnMeans(wells) : rowMeans(wells);
+    if (data.length === 0) return <p className="text-xs text-muted-foreground">Not enough data to plot.</p>;
+    return (
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <XAxis dataKey={isCol ? "col" : "row"} tick={{ fontSize: 11 }} stroke="currentColor" className="text-muted-foreground" />
+            <YAxis tick={{ fontSize: 11 }} stroke="currentColor" className="text-muted-foreground" width={44} domain={["auto", "auto"]} />
+            <Tooltip
+              formatter={(v: number) => [v.toFixed(3), "mean"]}
+              labelFormatter={(l) => isCol ? `Column ${l}` : `Row ${l}`}
+              {...tooltipStyle}
+            />
+            <Bar dataKey="mean" radius={[3, 3, 0, 0]} fill="hsl(var(--primary))" fillOpacity={0.8} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  if (spec.type === "well_scatter") {
+    const data = wellScatter(wells);
+    if (data.length === 0) return <p className="text-xs text-muted-foreground">Not enough data to plot.</p>;
+    return (
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="well" tick={{ fontSize: 9 }} stroke="currentColor" className="text-muted-foreground" interval={Math.ceil(data.length / 16)} />
+            <YAxis tick={{ fontSize: 11 }} stroke="currentColor" className="text-muted-foreground" width={44} domain={["auto", "auto"]} />
+            <Tooltip formatter={(v: number) => [v.toFixed(3), "value"]} {...tooltipStyle} />
+            <Scatter dataKey="value" fill="hsl(var(--primary))" isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  // dose_response
+  const cfg = spec.dose_response_config;
+  if (!cfg) return <p className="text-xs text-muted-foreground">Missing dose configuration — try specifying the column/row, top concentration, and dilution factor.</p>;
+
+  const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  const COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const wellMap = new Map(wells.map((w) => [w.well, w]));
+  let series = cfg.orientation === "column"
+    ? ROWS.map((r) => wellMap.get(`${r}${cfg.index}`)).filter((w): w is PlateWell => !!w)
+    : COLS.map((c) => wellMap.get(`${cfg.index}${c}`)).filter((w): w is PlateWell => !!w);
+  series = series.filter((w) => w.value !== null && w.status !== "blank");
+  if (cfg.reverse) series = [...series].reverse();
+
+  if (series.length < 4) {
+    return <p className="text-xs text-muted-foreground">Not enough wells along that {cfg.orientation} to fit a curve (need at least 4).</p>;
+  }
+  const doses = serialDilution(cfg.top_concentration, cfg.dilution_factor > 1 ? cfg.dilution_factor : 2, series.length);
+  const points = series.map((w, i) => ({ dose: doses[i], response: w.value as number, well: w.well }));
+  const fit = fit4PL(points);
+  if (!fit) return <p className="text-xs text-muted-foreground">Couldn't fit a dose-response curve to this data.</p>;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono">
+        <span><span className="text-muted-foreground">IC50/EC50: </span><span className="font-semibold text-primary">{fmtConc(fit.ic50)} {cfg.unit}</span>{!fit.ic50InRange && <span className="text-yellow-600"> (outside tested range)</span>}</span>
+        <span><span className="text-muted-foreground">Hill: </span>{fit.hill.toFixed(2)}</span>
+        <span className={fit.r2 >= 0.95 ? "text-emerald-500" : fit.r2 >= 0.8 ? "text-yellow-500" : "text-destructive"}>R² = {fit.r2.toFixed(3)}</span>
+      </div>
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart margin={{ top: 8, right: 12, bottom: 18, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis
+              type="number"
+              dataKey="dose"
+              scale="log"
+              domain={[fit.curve[0].dose, fit.curve[fit.curve.length - 1].dose]}
+              allowDataOverflow
+              tickFormatter={fmtConc}
+              tick={{ fontSize: 10 }}
+              stroke="currentColor"
+              className="text-muted-foreground"
+            />
+            <YAxis type="number" dataKey="response" tick={{ fontSize: 10 }} stroke="currentColor" className="text-muted-foreground" width={44} />
+            <Tooltip
+              formatter={(v: number) => [typeof v === "number" ? v.toFixed(2) : v, "signal"]}
+              labelFormatter={(l: number) => `${fmtConc(l)} ${cfg.unit}`}
+              {...tooltipStyle}
+            />
+            <Line data={fit.curve} dataKey="response" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} isAnimationActive={false} />
+            <Scatter data={points} dataKey="response" fill="hsl(var(--primary))" isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Focused "ask for a computed answer" box — e.g. dose-response/IC50 questions
  * that used to require a dedicated curve-fitting widget with manual row/column/
- * concentration config. Shares the SAME conversation as the "Ask about this
- * data" chat below (same grounding, same history) — this is just a second,
- * differently-framed entry point into it: shows only the latest exchange
- * instead of a full scrolling transcript, and invalidates the messages query
- * so the full chat picks up what was asked here too.
+ * concentration config. Uses a dedicated non-streaming endpoint (not the
+ * general chat) so the AI can return a chart TYPE + config alongside its
+ * answer — but it persists into the SAME conversation as the "Ask about this
+ * data" chat below, so both surfaces show one continuous history. The AI never
+ * invents chart data: every plotted number is computed here from the real wells.
  */
-function QuantifyBox({ conversationId }: { conversationId: number }) {
+function QuantifyBox({ experimentId, conversationId, wells }: { experimentId: number; conversationId: number; wells: PlateWell[] }) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
   const [askedQuestion, setAskedQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [chart, setChart] = useState<QuantifyChartSpec | null>(null);
   const [isAsking, setIsAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
 
@@ -399,39 +556,23 @@ function QuantifyBox({ conversationId }: { conversationId: number }) {
     setIsAsking(true);
     setAskedQuestion(q);
     setAnswer("");
+    setChart(null);
     setAskError(null);
     setQuestion("");
 
     try {
-      const response = await apiFetch(`/api/gemini/conversations/${conversationId}/messages`, {
+      const response = await apiFetch(`/api/experiments/${experimentId}/quantify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: q }),
+        body: JSON.stringify({ question: q }),
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: "Request failed" }));
         throw new Error(err.error ?? "Request failed");
       }
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.content) setAnswer((prev) => prev + data.content);
-              if (data.error) setAskError(data.error);
-            } catch {}
-          }
-        }
-      }
+      const data = await response.json();
+      setAnswer(data.answer ?? "");
+      setChart(data.chart ?? null);
     } catch (err) {
       setAskError(err instanceof Error ? err.message : "Couldn't reach the AI. Try again.");
     } finally {
@@ -448,7 +589,7 @@ function QuantifyBox({ conversationId }: { conversationId: number }) {
           Quantify anything
         </CardTitle>
         <CardDescription>
-          Ask for a specific computed answer — e.g. "what's the IC50 for this dose series?" or "what's the fold-change vs control?" Grounded in this experiment's protocol and data.
+          Ask for a specific computed answer or chart — e.g. "what's the IC50 for this dose series in column 1, top conc 100µM, 3-fold dilution?" or "show me the mean signal by row." Grounded in this experiment's protocol and data.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -479,13 +620,27 @@ function QuantifyBox({ conversationId }: { conversationId: number }) {
           </div>
         )}
 
-        {(answer || isAsking) && (
-          <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground">{askedQuestion}</div>
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
-              {isAsking && <span className="inline-block w-1.5 h-4 ml-1 bg-primary animate-pulse align-middle" />}
+        {isAsking && !answer && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Working it out…
+          </div>
+        )}
+
+        {answer && (
+          <div className="rounded-lg border border-border bg-background/60 p-3 space-y-3">
+            <div>
+              <div className="text-xs font-medium text-muted-foreground mb-1">{askedQuestion}</div>
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+              </div>
             </div>
+            {chart && (
+              <div className="pt-2 border-t border-border">
+                <div className="text-xs font-medium text-muted-foreground mb-2">{chart.title}</div>
+                <QuantifyChart spec={chart} wells={wells} />
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -828,8 +983,12 @@ export function DataAnalysisPage() {
                   </Card>
                 )}
 
-                {selectedExp?.conversation_id && (
-                  <QuantifyBox conversationId={selectedExp.conversation_id} />
+                {selectedId && selectedExp?.conversation_id && parsedSelectedSummary && "wells" in parsedSelectedSummary && Array.isArray(parsedSelectedSummary.wells) && (
+                  <QuantifyBox
+                    experimentId={selectedId}
+                    conversationId={selectedExp.conversation_id}
+                    wells={parsedSelectedSummary.wells}
+                  />
                 )}
               </>
             )}
